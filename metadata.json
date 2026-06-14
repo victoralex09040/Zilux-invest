@@ -1,0 +1,6 @@
+{
+  "name": "Zelox",
+  "description": "Zelox is a high-fidelity investment platform featuring dark premium terminal stylings, custom indicators, real-time ROI tracking, luck wheel spins, and task boards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
