@@ -5,6 +5,9 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlin.random.Random
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class InvestmentRepository(private val db: AppDatabase) {
     private val userDao = db.userDao()
@@ -306,6 +309,86 @@ class InvestmentRepository(private val db: AppDatabase) {
         return Result.success(Unit)
     }
 
+    suspend fun updateFullName(username: String, newName: String): Result<Unit> {
+        val user = userDao.getUserOneShot(username) ?: return Result.failure(Exception("User not found."))
+        if (newName.isBlank()) return Result.failure(Exception("Full name cannot be blank."))
+        val updated = user.copy(fullName = newName.trim())
+        userDao.updateUser(updated)
+        return Result.success(Unit)
+    }
+
+    suspend fun updateAge(username: String, age: Int): Result<Unit> {
+        val user = userDao.getUserOneShot(username) ?: return Result.failure(Exception("User not found."))
+        if (age < 0) return Result.failure(Exception("Age cannot be a negative value."))
+        val updated = user.copy(age = age)
+        userDao.updateUser(updated)
+        return Result.success(Unit)
+    }
+
+    suspend fun distributeRoiToAllActivePlans(isAuto: Boolean): Result<String> {
+        val allHoldings = investmentDao.getAllHoldingsOneShot()
+        if (allHoldings.isEmpty()) {
+            return Result.failure(Exception("No active plan investments found on the server."))
+        }
+
+        val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        var distributedCount = 0
+        var totalAmountPaid = 0.0
+
+        for (holding in allHoldings) {
+            if (holding.daysElapsed >= holding.durationDays) {
+                continue
+            }
+            
+            if (holding.lastDistributedDate == todayDate) {
+                continue
+            }
+
+            val user = userDao.getUserOneShot(holding.username) ?: continue
+            val dailyPayout = holding.amount * (holding.dailyPercentage / 100.0)
+            val newBalance = user.cashBalance + dailyPayout
+            userDao.updateUser(user.copy(cashBalance = newBalance))
+
+            val nextDaysElapsed = holding.daysElapsed + 1
+            val updatedHolding = holding.copy(
+                daysElapsed = nextDaysElapsed,
+                totalClaimed = holding.totalClaimed + dailyPayout,
+                lastCollectedTimestamp = System.currentTimeMillis(),
+                lastDistributedDate = todayDate
+            )
+            investmentDao.updateInvestment(updatedHolding)
+
+            transactionDao.insertTransaction(
+                InvestmentTransaction(
+                    username = holding.username,
+                    planId = holding.planId,
+                    planName = "Daily ROI (${if (isAuto) "Auto" else "Manual"}) - ${holding.planName}",
+                    type = "ROI_CLAIM",
+                    totalAmount = dailyPayout,
+                    status = "APPROVED",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+
+            logCurrentPortfolioHistory(holding.username, newBalance)
+
+            // Once plan reaches its duration, it will simply set daysElapsed >= durationDays and end automatically.
+            // No matured principal return is paid back to the cash balance.
+
+            distributedCount++
+            totalAmountPaid += dailyPayout
+        }
+
+        if (distributedCount == 0) {
+            return Result.success("All active plans are already up to date. No new ROI distributions were needed for today ($todayDate).")
+        }
+
+        val typeLabel = if (isAuto) "AUTOMATIC" else "MANUAL"
+        val message = "Executed $typeLabel ROI payout: $distributedCount plans processed. Paid $${String.format("%.2f", totalAmountPaid)} total."
+        
+        return Result.success(message)
+    }
+
     // --- Deposit & Withdrawal Real Logic ---
     suspend fun depositCash(
         username: String,
@@ -340,7 +423,7 @@ class InvestmentRepository(private val db: AppDatabase) {
         return Result.success(Unit)
     }
 
-    suspend fun withdrawCash(username: String, amount: Double): Result<Unit> {
+    suspend fun withdrawCash(username: String, amount: Double, isCrypto: Boolean = false): Result<Unit> {
         if (amount <= 0.0) return Result.failure(Exception("Amount must be greater than zero."))
         val user = userDao.getUserOneShot(username) ?: return Result.failure(Exception("User not found."))
 
@@ -351,14 +434,17 @@ class InvestmentRepository(private val db: AppDatabase) {
         // Must bind payment credentials first!
         val bankBound = !user.boundBankAccount.isNullOrBlank()
         val cryptoBound = !user.boundCryptoAddress.isNullOrBlank()
-        if (!bankBound && !cryptoBound) {
-            return Result.failure(Exception("Withdrawal failed! You must bind your Bank Account or Crypto Address in the Settings tab first."))
+        if (isCrypto && !cryptoBound) {
+            return Result.failure(Exception("Withdrawal failed! You must bind your Crypto Address in the Settings tab first."))
+        }
+        if (!isCrypto && !bankBound) {
+            return Result.failure(Exception("Withdrawal failed! You must bind your Bank Account in the Settings tab first."))
         }
 
         val newBalance = user.cashBalance - amount
         userDao.updateUser(user.copy(cashBalance = newBalance))
 
-        val withdrawChannel = if (cryptoBound) "USDT TRC20" else user.boundBankName ?: "Linked Bank Card"
+        val withdrawChannel = if (isCrypto) "USDT TRC20 (" + user.boundCryptoAddress + ")" else (user.boundBankName ?: "Local Bank") + " (" + (user.boundBankAccount ?: "") + ")"
 
         transactionDao.insertTransaction(
             InvestmentTransaction(
@@ -590,8 +676,8 @@ class InvestmentRepository(private val db: AppDatabase) {
     suspend fun getUserBackupData(username: String): UserBackup? {
         val user = userDao.getUserOneShot(username) ?: return null
         val holdings = investmentDao.getInvestmentsForUserOneShot(username)
-        val transactions = transactionDao.getTransactionsForUser(username).first()
-        val history = historyDao.getHistoryForUser(username).first()
+        val transactions = transactionDao.getTransactionsForUserOneShot(username)
+        val history = historyDao.getHistoryForUserOneShot(username)
         return UserBackup(
             user = user,
             investments = holdings,

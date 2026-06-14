@@ -74,7 +74,7 @@ fun InvestmentMarketApp(viewModel: InvestmentViewModel) {
     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     bottomBar = {
       // Elegant detail: only show the botnav bar once the user is authorized/logged in!
-      val showBottomBar = currentRoute in listOf("dashboard", "market", "transactions")
+      val showBottomBar = currentRoute in listOf("dashboard", "my_plans", "market", "transactions")
       if (showBottomBar) {
         InteractiveBottomBar(
           currentRoute = currentRoute,
@@ -172,6 +172,11 @@ fun InvestmentMarketApp(viewModel: InvestmentViewModel) {
             }
           }
         )
+      }
+
+      // My plans screen
+      composable("my_plans") {
+        MyPlansScreen(viewModel = viewModel)
       }
 
       // 5. INVESTMENT PLANS MARKET

@@ -284,6 +284,26 @@ fun InteractiveBottomBar(
         )
 
         NavigationBarItem(
+            selected = currentRoute == "my_plans",
+            onClick = { onNavigate("my_plans") },
+            label = { Text("My Plans", fontSize = 11.sp) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = EmeraldGreen,
+                selectedTextColor = EmeraldGreen,
+                indicatorColor = EmeraldGreen.copy(alpha = 0.15f),
+                unselectedIconColor = DarkGreyText,
+                unselectedTextColor = DarkGreyText
+            ),
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "My Plans"
+                )
+            },
+            modifier = Modifier.testTag("nav_my_plans")
+        )
+
+        NavigationBarItem(
             selected = currentRoute == "market",
             onClick = { onNavigate("market") },
             label = { Text("Market", fontSize = 11.sp) },

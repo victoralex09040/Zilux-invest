@@ -9,6 +9,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 sealed interface AuthState {
     object Idle : AuthState
@@ -20,6 +23,13 @@ sealed interface AuthState {
 class InvestmentViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: InvestmentRepository
     private val supabaseClient = SupabaseClient()
+    private val sharedPrefs = application.getSharedPreferences("zelox_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _distributionHistory = MutableStateFlow<List<String>>(emptyList())
+    val distributionHistory: StateFlow<List<String>> = _distributionHistory.asStateFlow()
+
+    private val _actionResult = MutableSharedFlow<Result<String>>()
+    val actionResult = _actionResult.asSharedFlow()
 
     init {
         val database = AppDatabase.getDatabase(application)
@@ -32,6 +42,9 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
 
         // Start real-time live market ticker service
         startMarketTicker()
+
+        loadDistributionHistory()
+        initializeAutoDistributor()
     }
 
     // --- Supabase Cloud Database Sync Syncing Helpers ---
@@ -39,6 +52,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         val saved = sharedPrefs.getString("supabase_url", "") ?: ""
         val disconnected = sharedPrefs.getBoolean("supabase_disconnected", false)
         if (saved.isBlank() && !disconnected) {
+            val buildConfigUrl = try { com.example.BuildConfig.SUPABASE_URL } catch (e: Exception) { "" }
+            if (buildConfigUrl.isNotBlank() && !buildConfigUrl.startsWith("MY_")) {
+                return buildConfigUrl
+            }
             return "https://fpnsgxtrsiegntteqkhw.supabase.co"
         }
         return saved
@@ -48,6 +65,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         val saved = sharedPrefs.getString("supabase_key", "") ?: ""
         val disconnected = sharedPrefs.getBoolean("supabase_disconnected", false)
         if (saved.isBlank() && !disconnected) {
+            val buildConfigKey = try { com.example.BuildConfig.SUPABASE_KEY } catch (e: Exception) { "" }
+            if (buildConfigKey.isNotBlank() && !buildConfigKey.startsWith("MY_")) {
+                return buildConfigKey
+            }
             return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwbnNneHRyc2llZ250dGVxa2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzOTU4OTksImV4cCI6MjA5Njk3MTg5OX0.UioaRLJND7uQxlU-_3fm0c9WOtSIvMDa4UvhHpSVDWo"
         }
         return saved
@@ -82,6 +103,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
             val backup = repository.getUserBackupData(username)
             if (backup != null) {
                 val res = supabaseClient.saveBackup(url, key, username, backup)
+                val email = backup.user.email.trim().lowercase()
+                if (email.isNotBlank() && email != username) {
+                    supabaseClient.saveBackup(url, key, email, backup)
+                }
                 if (res.isSuccess) {
                     _actionResult.emit(Result.success("Success: Saved all metrics directly to Supabase Cloud!"))
                 } else {
@@ -100,7 +125,17 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val backup = repository.getUserBackupData(username)
             if (backup != null) {
-                supabaseClient.saveBackup(url, key, username, backup)
+                val res = supabaseClient.saveBackup(url, key, username, backup)
+                val email = backup.user.email.trim().lowercase()
+                if (email.isNotBlank() && email != username) {
+                    supabaseClient.saveBackup(url, key, email, backup)
+                }
+                if (res.isSuccess) {
+                    android.util.Log.d("ZeloxSupabase", "Cloud backup saved successfully.")
+                } else {
+                    val err = res.exceptionOrNull()?.message ?: "Unknown error"
+                    android.util.Log.e("ZeloxSupabase", "Cloud backup failed: $err")
+                }
             }
         }
     }
@@ -124,6 +159,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
                     val backup = repository.getUserBackupData(active)
                     if (backup != null) {
                         supabaseClient.saveBackup(url, key, active, backup)
+                        val email = backup.user.email.trim().lowercase()
+                        if (email.isNotBlank() && email != active) {
+                            supabaseClient.saveBackup(url, key, email, backup)
+                        }
                         _actionResult.emit(Result.success("Connected & synchronized local active portfolio to the cloud!"))
                     }
                 }
@@ -195,11 +234,7 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
     private val _signUpState = MutableStateFlow<AuthState>(AuthState.Idle)
     val signUpState: StateFlow<AuthState> = _signUpState.asStateFlow()
 
-    private val _actionResult = MutableSharedFlow<Result<String>>()
-    val actionResult = _actionResult.asSharedFlow()
-
     // --- Remember Me Preferences ---
-    private val sharedPrefs = application.getSharedPreferences("zelox_prefs", android.content.Context.MODE_PRIVATE)
 
     fun getSavedLogin(): Pair<String, String>? {
         val remember = sharedPrefs.getBoolean("remember_me", false)
@@ -242,13 +277,20 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
             val key = getSupabaseKey()
             
             // Try automatic cloud check and restoration before local verification
+            var restoredFromCloud = false
             if (url.isNotBlank() && key.isNotBlank()) {
+                android.util.Log.d("ZeloxSupabase", "Checking cloud restore for username/email: $cleanUsername")
                 val remoteBackupRes = supabaseClient.downloadBackup(url, key, cleanUsername)
                 if (remoteBackupRes.isSuccess) {
                     val backup = remoteBackupRes.getOrNull()
                     if (backup != null) {
                         repository.restoreUserFromBackup(backup)
+                        restoredFromCloud = true
+                        android.util.Log.d("ZeloxSupabase", "Successfully downloaded cloud backup and restored user local data.")
                     }
+                } else {
+                    val err = remoteBackupRes.exceptionOrNull()?.message ?: ""
+                    android.util.Log.e("ZeloxSupabase", "Failed to check cloud restoration: $err")
                 }
             }
 
@@ -258,11 +300,18 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
                 _loginState.value = AuthState.Success
                 _currentUsername.value = user.username
                 repository.logCurrentPortfolioHistory(user.username, user.cashBalance)
+                if (restoredFromCloud) {
+                    _actionResult.emit(Result.success("Success: Your profile has been restored from your online Supabase database!"))
+                }
                 backupActiveUserToSupabase()
             } else {
                 _loginState.value = AuthState.Error("Incorrect email/username or password.")
             }
         }
+    }
+
+    fun setSignUpError(message: String) {
+        _signUpState.value = AuthState.Error(message)
     }
 
     fun signUp(
@@ -365,6 +414,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         return sharedPrefs.getFloat("admin_naira_rate", 1500.0f).toDouble()
     }
 
+    fun getAdminWithdrawalNairaRate(): Double {
+        return sharedPrefs.getFloat("admin_withdrawal_naira_rate", 1450.0f).toDouble()
+    }
+
     fun getAdminBankName(): String {
         return sharedPrefs.getString("admin_bank_name", "Access Bank PLC") ?: "Access Bank PLC"
     }
@@ -377,9 +430,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         return sharedPrefs.getString("admin_bank_account_name", "Zelox Invest Corp (Nigeria)") ?: "Zelox Invest Corp (Nigeria)"
     }
 
-    fun saveAdminPlatformSettings(rate: Double, bankName: String, accountNumber: String, accountName: String) {
+    fun saveAdminPlatformSettings(depositRate: Double, withdrawalRate: Double, bankName: String, accountNumber: String, accountName: String) {
         sharedPrefs.edit()
-            .putFloat("admin_naira_rate", rate.toFloat())
+            .putFloat("admin_naira_rate", depositRate.toFloat())
+            .putFloat("admin_withdrawal_naira_rate", withdrawalRate.toFloat())
             .putString("admin_bank_name", bankName.trim())
             .putString("admin_bank_account_number", accountNumber.trim())
             .putString("admin_bank_account_name", accountName.trim())
@@ -423,10 +477,10 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     // Withdraw cash
-    fun withdraw(amount: Double) {
+    fun withdraw(amount: Double, isCrypto: Boolean = false) {
         val username = _currentUsername.value ?: return
         viewModelScope.launch {
-            val result = repository.withdrawCash(username, amount)
+            val result = repository.withdrawCash(username, amount, isCrypto)
             if (result.isSuccess) {
                 _actionResult.emit(Result.success("Withdrawal of $$amount processed successfully! Pending review."))
                 backupActiveUserToSupabase()
@@ -588,6 +642,98 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
                         repository.logCurrentPortfolioHistory(activeUser, userObj.cashBalance)
                     }
                 }
+            }
+        }
+    }
+
+    // --- ROI Distribution Configuration & Logging ---
+    private fun loadDistributionHistory() {
+        val raw = sharedPrefs.getString("roi_distribution_history", "") ?: ""
+        if (raw.isNotBlank()) {
+            _distributionHistory.value = raw.split("\n")
+        } else {
+            _distributionHistory.value = emptyList()
+        }
+    }
+
+    private fun saveDistributionHistory(newEvent: String) {
+        val currentList = _distributionHistory.value.toMutableList()
+        currentList.add(0, newEvent)
+        val text = currentList.take(30).joinToString("\n")
+        sharedPrefs.edit().putString("roi_distribution_history", text).apply()
+        _distributionHistory.value = currentList.take(30)
+    }
+
+    fun isAutoRoiEnabled(): Boolean = sharedPrefs.getBoolean("roi_auto_enabled", false)
+    fun getAutoRoiTime(): String = sharedPrefs.getString("roi_auto_time", "12:00") ?: "12:00"
+
+    fun saveAutoRoiSettings(enabled: Boolean, time: String) {
+        sharedPrefs.edit()
+            .putBoolean("roi_auto_enabled", enabled)
+            .putString("roi_auto_time", time)
+            .apply()
+    }
+
+    fun distributeUserRoiManually() {
+        viewModelScope.launch {
+            val res = repository.distributeRoiToAllActivePlans(isAuto = false)
+            if (res.isSuccess) {
+                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + res.getOrThrow()
+                saveDistributionHistory(logMsg)
+                _actionResult.emit(Result.success(res.getOrThrow()))
+            } else {
+                _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Manual distribution failed.")))
+            }
+        }
+    }
+
+    private fun initializeAutoDistributor() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(15000) // check every 15 seconds
+                if (isAutoRoiEnabled()) {
+                    val schedTime = getAutoRoiTime()
+                    val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    if (currentTime == schedTime) {
+                        val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        val lastRanAutoDay = sharedPrefs.getString("last_ran_auto_day", "") ?: ""
+                        if (lastRanAutoDay != todayDate) {
+                            sharedPrefs.edit().putString("last_ran_auto_day", todayDate).apply()
+                            val res = repository.distributeRoiToAllActivePlans(isAuto = true)
+                            if (res.isSuccess) {
+                                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + res.getOrThrow()
+                                saveDistributionHistory(logMsg)
+                                _actionResult.emit(Result.success(res.getOrThrow()))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateFullName(newName: String) {
+        val username = _currentUsername.value ?: return
+        viewModelScope.launch {
+            val res = repository.updateFullName(username, newName)
+            if (res.isSuccess) {
+                _actionResult.emit(Result.success("Success: Full name updated."))
+                backupActiveUserToSupabase()
+            } else {
+                _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Failed to update name.")))
+            }
+        }
+    }
+
+    fun updateAge(newAge: Int) {
+        val username = _currentUsername.value ?: return
+        viewModelScope.launch {
+            val res = repository.updateAge(username, newAge)
+            if (res.isSuccess) {
+                _actionResult.emit(Result.success("Success: Profile age updated."))
+                backupActiveUserToSupabase()
+            } else {
+                _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Failed to update age.")))
             }
         }
     }

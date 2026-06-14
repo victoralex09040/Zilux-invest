@@ -21,7 +21,8 @@ data class User(
     val referralCode: String = "",
     val referredBy: String? = null,
     val referredCount: Int = 0,
-    val lastSpinTime: Long = 0L
+    val lastSpinTime: Long = 0L,
+    val age: Int = 0
 )
 
 @Entity(tableName = "investment_plans")
@@ -47,7 +48,8 @@ data class UserInvestment(
     val purchaseTimestamp: Long = System.currentTimeMillis(),
     val lastCollectedTimestamp: Long = System.currentTimeMillis(),
     val daysElapsed: Int = 0,
-    val totalClaimed: Double = 0.0
+    val totalClaimed: Double = 0.0,
+    val lastDistributedDate: String = ""
 )
 
 @Entity(tableName = "portfolio_history")
@@ -136,6 +138,12 @@ interface UserInvestmentDao {
     @Query("SELECT * FROM user_investments WHERE username = :username")
     suspend fun getInvestmentsForUserOneShot(username: String): List<UserInvestment>
 
+    @Query("SELECT * FROM user_investments")
+    fun observeAllHoldings(): Flow<List<UserInvestment>>
+
+    @Query("SELECT * FROM user_investments")
+    suspend fun getAllHoldingsOneShot(): List<UserInvestment>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInvestment(investment: UserInvestment)
 
@@ -154,6 +162,9 @@ interface PortfolioHistoryDao {
     @Query("SELECT * FROM portfolio_history WHERE username = :username ORDER BY timestamp ASC")
     fun getHistoryForUser(username: String): Flow<List<PortfolioHistory>>
 
+    @Query("SELECT * FROM portfolio_history WHERE username = :username ORDER BY timestamp ASC")
+    suspend fun getHistoryForUserOneShot(username: String): List<PortfolioHistory>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHistory(history: PortfolioHistory)
 
@@ -165,6 +176,9 @@ interface PortfolioHistoryDao {
 interface TransactionDao {
     @Query("SELECT * FROM investment_transactions WHERE username = :username ORDER BY timestamp DESC")
     fun getTransactionsForUser(username: String): Flow<List<InvestmentTransaction>>
+
+    @Query("SELECT * FROM investment_transactions WHERE username = :username ORDER BY timestamp DESC")
+    suspend fun getTransactionsForUserOneShot(username: String): List<InvestmentTransaction>
 
     @Query("SELECT * FROM investment_transactions ORDER BY timestamp DESC")
     fun getAllTransactions(): Flow<List<InvestmentTransaction>>
@@ -197,7 +211,7 @@ interface TransactionDao {
         PortfolioHistory::class,
         InvestmentTransaction::class
     ],
-    version = 4, // Upgraded database version to 4 for local bank transfer and crypto fields
+    version = 6, // Upgraded database version to 6 for age field in user profile
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

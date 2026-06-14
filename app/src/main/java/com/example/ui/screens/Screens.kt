@@ -7,6 +7,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -474,6 +476,14 @@ fun SignUpScreen(
     var referralCode by remember { mutableStateOf("") }
     var agreedToTerms by remember { mutableStateOf(false) }
 
+    // Pattern Lock challenge states
+    var showPatternChallenge by remember { mutableStateOf(false) }
+    var currentChallengeRound by remember { mutableStateOf(1) } // 1, 2, 3
+    var challengeSequence by remember { mutableStateOf(listOf<Int>()) } 
+    var userTappedSequence by remember { mutableStateOf(listOf<Int>()) }
+    var challengeFeedbackText by remember { mutableStateOf("Tap sequence of the generated code.") }
+    var challengeIsError by remember { mutableStateOf(false) }
+
     val authState by viewModel.signUpState.collectAsState()
     val focusManager = LocalFocusManager.current
 
@@ -481,6 +491,282 @@ fun SignUpScreen(
         if (authState is AuthState.Success) {
             onSignUpSuccess()
             viewModel.clearAuthStates()
+        }
+    }
+
+    // Pattern Challenge Secure overlay dialog
+    if (showPatternChallenge) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showPatternChallenge = false }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "9-DOT SECURITY ROUTING",
+                        color = GoldAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+
+                    Text(
+                        text = "Solve sequence path to authorize ledger deployment.",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Round Counter Tag
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(GoldAccent.copy(alpha = 0.12f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "ROUND STATE: $currentChallengeRound OF 3",
+                            color = GoldAccent,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+
+                    // Challenge sequence display
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                        border = BorderStroke(0.5.dp, BorderColor)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "TAP CHALLENGE PATTERN",
+                                color = DarkGreyText,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                challengeSequence.forEachIndexed { idx, value ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(EmeraldGreen.copy(alpha = 0.15f))
+                                            .border(1.dp, EmeraldGreen, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = value.toString(),
+                                            color = EmeraldGreen,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    if (idx < challengeSequence.lastIndex) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowForward,
+                                            contentDescription = null,
+                                            tint = DarkGreyText,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // User current input display
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "YOUR INPUT GRID PATH",
+                            color = DarkGreyText,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            if (userTappedSequence.isEmpty()) {
+                                Text("[ Waiting for input... ]", color = DarkGreyText, fontSize = 10.sp)
+                            } else {
+                                userTappedSequence.forEachIndexed { idx, value ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(CircleShape)
+                                            .background(GoldAccent.copy(alpha = 0.12f))
+                                            .border(1.dp, GoldAccent, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = value.toString(),
+                                            color = GoldAccent,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    if (idx < userTappedSequence.lastIndex) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowForward,
+                                            contentDescription = null,
+                                            tint = DarkGreyText,
+                                            modifier = Modifier.size(8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Feedback Message text display
+                    Text(
+                        text = challengeFeedbackText,
+                        color = if (challengeIsError) LossRed else EmeraldGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    )
+
+                    // Interactive 9-Dot Visual Pattern Buttons
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        for (row in 0 until 3) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                for (col in 0 until 3) {
+                                    val dotValue = row * 3 + col + 1
+                                    val isDotSelectedInUserPath = userTappedSequence.contains(dotValue)
+                                    
+                                    val ringColor = when {
+                                        isDotSelectedInUserPath -> GoldAccent
+                                        else -> BorderColor
+                                    }
+                                    val interiorBg = when {
+                                        isDotSelectedInUserPath -> GoldAccent.copy(alpha = 0.2f)
+                                        else -> Color.Transparent
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(interiorBg)
+                                            .border(1.2.dp, ringColor, CircleShape)
+                                            .clickable {
+                                                if (userTappedSequence.size < 5) {
+                                                    // Append clicked dot
+                                                    val newSeq = userTappedSequence + dotValue
+                                                    userTappedSequence = newSeq
+                                                    challengeIsError = false
+                                                    challengeFeedbackText = "Registering node $dotValue. Keep entering sequence..."
+
+                                                    if (newSeq.size == 5) {
+                                                        // Evaluate complete match
+                                                        if (newSeq == challengeSequence) {
+                                                            if (currentChallengeRound < 3) {
+                                                                val oldRound = currentChallengeRound
+                                                                currentChallengeRound++
+                                                                challengeSequence = (1..9).shuffled().take(5)
+                                                                userTappedSequence = emptyList()
+                                                                challengeFeedbackText = "PASS ROUND $oldRound! Proceeding to Round $currentChallengeRound"
+                                                                challengeIsError = false
+                                                            } else {
+                                                                // Passed all 3 rounds successfully!
+                                                                showPatternChallenge = false
+                                                                viewModel.signUp(
+                                                                    username = username,
+                                                                    passwordRaw = password,
+                                                                    confirmPasswordRaw = confirmPassword,
+                                                                    fullName = fullName,
+                                                                    email = email,
+                                                                    agreedToTerms = agreedToTerms,
+                                                                    referralCodeUsed = referralCode.ifBlank { null }
+                                                                )
+                                                            }
+                                                        } else {
+                                                            // Invalid entry path
+                                                            challengeFeedbackText = "Path mismatched. Restart sequence of Round $currentChallengeRound!"
+                                                            challengeIsError = true
+                                                            userTappedSequence = emptyList()
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = dotValue.toString(),
+                                            color = if (isDotSelectedInUserPath) GoldAccent else Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Bottom helper actions
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                userTappedSequence = emptyList()
+                                challengeFeedbackText = "Sequence path cleared. Please input from the start."
+                                challengeIsError = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            border = BorderStroke(1.dp, BorderColor),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("RESET CURRENT", color = Color.White, fontSize = 9.sp)
+                        }
+
+                        Button(
+                            onClick = { showPatternChallenge = false },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                            border = BorderStroke(1.dp, LossRed.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("ABORT SIGNUP", color = LossRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -695,15 +981,27 @@ fun SignUpScreen(
                     Button(
                         onClick = {
                             focusManager.clearFocus()
-                            viewModel.signUp(
-                                username = username,
-                                passwordRaw = password,
-                                confirmPasswordRaw = confirmPassword,
-                                fullName = fullName,
-                                email = email,
-                                agreedToTerms = agreedToTerms,
-                                referralCodeUsed = referralCode.ifBlank { null }
-                            )
+                            val validationError = when {
+                                fullName.isBlank() -> "Please enter your Full Identification Name."
+                                email.isBlank() || !email.contains("@") -> "Please enter a valid Email Address Protocol."
+                                username.isBlank() -> "Please enter a System Link Username."
+                                password.isBlank() -> "Please enter a Password Vault Token."
+                                password != confirmPassword -> "Passwords do not match. Please re-type your secure password."
+                                !agreedToTerms -> "You must agree to the Zelox terms of service to deploy a new node."
+                                else -> null
+                            }
+
+                            if (validationError != null) {
+                                viewModel.setSignUpError(validationError)
+                            } else {
+                                // Trigger the Pattern Challenge Security Protocol
+                                currentChallengeRound = 1
+                                challengeSequence = (1..9).shuffled().take(5)
+                                userTappedSequence = emptyList()
+                                challengeFeedbackText = "Input the challenge sequence displayed above."
+                                challengeIsError = false
+                                showPatternChallenge = true
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -781,7 +1079,7 @@ fun DashboardScreen(
         val title = when (detailKey) {
             "deposit" -> "DEPOSIT CAPITAL PROTOCOL"
             "withdrawal" -> "DISBURSEMENT FUNDS GATEWAY"
-            "portfolio" -> "YIELD LOCKUP ACCRUING HOLDINGS"
+            "portfolio" -> "ACTIVE PORTFOLIO ASSETS HOLDINGS"
             "affiliate" -> "AFFILIATE RECRUITMENT NODES"
             "luckyspin" -> "CHRONO FORTUNE SPIN CORES"
             "tasks" -> "INTERACTIVE PLATFORM REWARDS"
@@ -796,8 +1094,8 @@ fun DashboardScreen(
             onBack = { activeActionDetail = null }
         ) {
             when (detailKey) {
-                "deposit" -> CashOperationsSubTab(user = activeUser, viewModel = viewModel, forceDepositMode = true)
-                "withdrawal" -> CashOperationsSubTab(user = activeUser, viewModel = viewModel, forceDepositMode = false)
+                "deposit" -> CashOperationsSubTab(user = activeUser, viewModel = viewModel, forceDepositMode = true, onNavigateToTab = { activeActionDetail = it })
+                "withdrawal" -> CashOperationsSubTab(user = activeUser, viewModel = viewModel, forceDepositMode = false, onNavigateToTab = { activeActionDetail = it })
                 "portfolio" -> YieldInvestmentsSubTab(holdings = holdings, viewModel = viewModel, onNavigateToMarket = onNavigateToMarket)
                 "affiliate" -> AffiliateReferralSubTab(user = activeUser)
                 "luckyspin" -> SlotLuckyWheelSubTab(user = activeUser, viewModel = viewModel)
@@ -899,54 +1197,25 @@ fun DashboardScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(20.dp)
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "TOTAL NETWORTH VALUATION NODES",
+                                text = "AVAILABLE WALLET BALANCE",
                                 color = DarkGreyText,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "$${String.format(Locale.getDefault(), "%,.2f", netWorthVal)}",
-                                color = Color.White,
-                                fontSize = 32.sp,
+                                text = "$${String.format(Locale.getDefault(), "%,.2f", activeUser?.cashBalance ?: 0.0)}",
+                                color = EmeraldGreen,
+                                fontSize = 36.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.testTag("networth_display")
                             )
-
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Divider(color = BorderColor)
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(text = "Unbound Cash Balance", color = DarkGreyText, fontSize = 11.sp)
-                                    Text(
-                                        text = "$${String.format(Locale.getDefault(), "%,.2f", activeUser?.cashBalance ?: 0.0)}",
-                                        color = EmeraldGreen,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(text = "Active Lockup Yield", color = DarkGreyText, fontSize = 11.sp)
-                                    Text(
-                                        text = "$${String.format(Locale.getDefault(), "%,.2f", holdingsVal)}",
-                                        color = GoldAccent,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -1549,28 +1818,32 @@ fun YieldInvestmentsSubTab(
 fun CashOperationsSubTab(
     user: User?,
     viewModel: InvestmentViewModel,
-    forceDepositMode: Boolean = true
+    forceDepositMode: Boolean = true,
+    onNavigateToTab: (String) -> Unit = {}
 ) {
-    var isDepositMode by remember(forceDepositMode) { mutableStateOf(forceDepositMode) }
+    val isDepositMode = forceDepositMode
     var entryAmount by remember { mutableStateOf("") }
 
     // Nested states for Deposit Steps
-    var depositStep by remember { mutableStateOf("SELECT_METHOD") } // "SELECT_METHOD", "AMOUNT_INPUT", "TIMER_GENERATING_DETAILS", "PAYMENT_DETAILS", "TIMER_CONFIRMATION"
-    var selectedMethod by remember { mutableStateOf("") } // "BANK" or "CRYPTO"
+    var depositStep by remember { mutableStateOf("SELECT_METHOD") } // "SELECT_METHOD", "TIMER_GENERATING_DETAILS", "PAYMENT_DETAILS", "TIMER_CONFIRMATION"
+    var selectedMethod by remember { mutableStateOf("BANK") } // "BANK" or "CRYPTO"
 
     var senderFullName by remember(user) { mutableStateOf(user?.fullName ?: "") }
     var senderAccountNumber by remember { mutableStateOf("") }
     var senderBankName by remember { mutableStateOf("") }
     var transactionId by remember { mutableStateOf("") }
     var timerVal by remember { mutableStateOf(7) }
+    var animationPercentage by remember { mutableStateOf(1) }
 
     // LaunchedEffect to manage the 7-second timers
     LaunchedEffect(depositStep) {
         if (depositStep == "TIMER_GENERATING_DETAILS") {
-            timerVal = 7
-            while (timerVal > 0) {
-                delay(1000)
-                timerVal--
+            animationPercentage = 1
+            val totalTicks = 100
+            val delayMs = 70L // 70ms * 100 = 7000ms (7s total duration)
+            for (i in 1..totalTicks) {
+                delay(delayMs)
+                animationPercentage = i
             }
             depositStep = "PAYMENT_DETAILS"
         } else if (depositStep == "TIMER_CONFIRMATION") {
@@ -1579,9 +1852,9 @@ fun CashOperationsSubTab(
                 delay(1000)
                 timerVal--
             }
-            // Once timer ends, reset state
+            // Once timer ends, reset state to beginning
             depositStep = "SELECT_METHOD"
-            selectedMethod = ""
+            selectedMethod = "BANK"
             entryAmount = ""
             senderFullName = user?.fullName ?: ""
             senderAccountNumber = ""
@@ -1590,637 +1863,1040 @@ fun CashOperationsSubTab(
         }
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
     ) {
-        Button(
-            onClick = { 
-                isDepositMode = true 
-                depositStep = "SELECT_METHOD"
-            },
-            modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(containerColor = if (isDepositMode) EmeraldGreen else BorderColor),
-            shape = RoundedCornerShape(8.dp)
+        // Welcoming portal header based on current modes
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, if (isDepositMode) EmeraldGreen.copy(alpha = 0.3f) else ElectricBlue.copy(alpha = 0.3f)),
+            shape = RoundedCornerShape(10.dp)
         ) {
-            Text(text = "DEPOSIT CAP", color = if (isDepositMode) DeepObsidian else Color.White, fontWeight = FontWeight.Bold)
-        }
-        Button(
-            onClick = { isDepositMode = false },
-            modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(containerColor = if (!isDepositMode) EmeraldGreen else BorderColor),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text(text = "WITHDRAW CASH", color = if (!isDepositMode) DeepObsidian else Color.White, fontWeight = FontWeight.Bold)
-        }
-    }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    if (isDepositMode) {
-        // --- DEPOSIT FLOW STEPS ---
-        when (depositStep) {
-            "SELECT_METHOD" -> {
-                Text(
-                    text = "SELECT DEPOSIT GATEWAY",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Choose your preferred channel to establish secure capital deposit.",
-                    color = DarkGreyText,
-                    fontSize = 11.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Option: Local Bank Transfer (Most Used)
-                Card(
-                    onClick = {
-                        selectedMethod = "BANK"
-                        depositStep = "AMOUNT_INPUT"
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-                    border = BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.6f))
+            Row(
+                modifier = Modifier.padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isDepositMode) EmeraldGreen.copy(alpha = 0.12f) else ElectricBlue.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(EmeraldGreen.copy(alpha = 0.12f))
-                                        .padding(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Send,
-                                        contentDescription = null,
-                                        tint = EmeraldGreen,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Local Bank Transfer",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Instant ₦ Naira channels with bank app",
-                                        color = SilverGray,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            // Popular Badge
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(EmeraldGreen)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                             ) {
-                                Text(
-                                    text = "MOST USED",
-                                    color = DeepObsidian,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
-                    }
+                    Icon(
+                        imageVector = if (isDepositMode) Icons.Default.Send else Icons.Default.ExitToApp,
+                        contentDescription = null,
+                        tint = if (isDepositMode) EmeraldGreen else ElectricBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Option: Cryptocurrency
-                Card(
-                    onClick = {
-                        selectedMethod = "CRYPTO"
-                        depositStep = "AMOUNT_INPUT"
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(ElectricBlue.copy(alpha = 0.12f))
-                                        .padding(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = ElectricBlue,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Cryptocurrency Transfer",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Secure USDT TRC20 token settlement",
-                                        color = SilverGray,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            // Secure Badge
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(ElectricBlue.copy(alpha = 0.2f))
-                                    .border(1.dp, ElectricBlue, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "SECURE",
-                                    color = ElectricBlue,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            "AMOUNT_INPUT" -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { depositStep = "SELECT_METHOD" }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
+                Column {
                     Text(
-                        text = if (selectedMethod == "BANK") "LOCAL BANK DEPOSIT INFLOW" else "CRYPTOCURRENCY WALLET INFLOW",
+                        text = if (isDepositMode) "CAPITAL DEPOSIT GATEWAY" else "CHECKOUT SECURE DISPATCH",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Dollar input field
-                OutlinedTextField(
-                    value = entryAmount,
-                    onValueChange = { entryAmount = it.filter { c -> c.isDigit() || c == '.' } },
-                    label = { Text("Enter Amount in Dollars ($)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    leadingIcon = { Text("$", color = EmeraldGreen, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderColor,
-                        focusedLabelColor = EmeraldGreen,
-                        unfocusedLabelColor = DarkGreyText
+                    Text(
+                        text = if (isDepositMode) "Submit a secure capital deposit inflow to credit your active balance ledger." else "Transfer ledger balance directly back to your bound bank or crypto address.",
+                        color = DarkGreyText,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp
                     )
-                )
+                }
+            }
+        }
 
-                Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
-                // Conversion rate box
-                val nairaRate = viewModel.getAdminNairaRate()
-                val enteredAmt = entryAmount.toDoubleOrNull() ?: 0.0
-                val totalNaira = enteredAmt * nairaRate
+        if (isDepositMode) {
+            // --- DEPOSIT FLOW STEPS ---
+            when (depositStep) {
+                "SELECT_METHOD" -> {
+                    Text(
+                        text = "CHOOSE FUNDING TYPE & AMOUNT",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Mark your preferred deposit method, input desired amount, and proceed to connection phase.",
+                        color = DarkGreyText,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard.copy(alpha = 0.5f)),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "CONVERSION INDEX CONSOLE", color = GoldAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    // METHOD SELECTION (They should mark anyone they want)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Option 1: Local Bank
+                        val bankSelected = selectedMethod == "BANK"
+                        Card(
+                            onClick = { selectedMethod = "BANK" },
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (bankSelected) DarkSlateCard else DeepObsidian
+                            ),
+                            border = BorderStroke(1.5.dp, if (bankSelected) EmeraldGreen else BorderColor),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = null,
+                                        tint = if (bankSelected) EmeraldGreen else DarkGreyText,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    
+                                    // Custom beautifully-marked circular radio check
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(CircleShape)
+                                            .background(if (bankSelected) EmeraldGreen else Color.Transparent)
+                                            .border(2.dp, if (bankSelected) EmeraldGreen else BorderColor, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (bankSelected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(DeepObsidian)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Local Bank",
+                                    color = if (bankSelected) Color.White else SilverGray,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Transfer ₦ Naira",
+                                    color = if (bankSelected) EmeraldGreen else DarkGreyText,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
-                        
-                        if (selectedMethod == "BANK") {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Admin Base Rate", color = SilverGray, fontSize = 11.sp)
-                                Text("1 USD = ₦${String.format("%,.2f", nairaRate)} NGN", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                        // Option 2: Cryptocurrency
+                        val cryptoSelected = selectedMethod == "CRYPTO"
+                        Card(
+                            onClick = { selectedMethod = "CRYPTO" },
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (cryptoSelected) DarkSlateCard else DeepObsidian
+                            ),
+                            border = BorderStroke(1.5.dp, if (cryptoSelected) EmeraldGreen else BorderColor),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = if (cryptoSelected) ElectricBlue else DarkGreyText,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    
+                                    // Custom beautifully-marked circular radio check
+                                    Box(
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .clip(CircleShape)
+                                            .background(if (cryptoSelected) EmeraldGreen else Color.Transparent)
+                                            .border(2.dp, if (cryptoSelected) EmeraldGreen else BorderColor, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (cryptoSelected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(DeepObsidian)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Crypto USDT",
+                                    color = if (cryptoSelected) Color.White else SilverGray,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "USDT (TRC20)",
+                                    color = if (cryptoSelected) ElectricBlue else DarkGreyText,
+                                    fontSize = 10.sp
+                                )
                             }
-                            Divider(color = BorderColor.copy(alpha = 0.5f))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Amount to Send (Naira)", color = SilverGray, fontSize = 11.sp)
-                                Text("₦${String.format("%,.2f", totalNaira)}", color = EmeraldGreen, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "ENTER SEC_VALUE AMOUNT ($)",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Amount box for them to fill in
+                    OutlinedTextField(
+                        value = entryAmount,
+                        onValueChange = { entryAmount = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("Capital Deposit Amount ($)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = { Text("$", color = EmeraldGreen, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Conversion Rate Box Beneath
+                    val nairaRate = viewModel.getAdminNairaRate()
+                    val enteredAmt = entryAmount.toDoubleOrNull() ?: 0.0
+                    val totalNaira = enteredAmt * nairaRate
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                        border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (selectedMethod == "BANK") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "Base Conversion Rate:", color = SilverGray, fontSize = 11.sp)
+                                    Text(text = "1 USD = ₦${String.format("%,.2f", nairaRate)} NGN", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                androidx.compose.material3.HorizontalDivider(color = BorderColor.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "Naira Amount to Transfer:", color = SilverGray, fontSize = 11.sp)
+                                    Text(
+                                        text = "₦${String.format("%,.2f", totalNaira)}",
+                                        color = EmeraldGreen,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "Crypto Index Value:", color = SilverGray, fontSize = 11.sp)
+                                    Text(text = "1 USD = 1.00 USDT Token", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                androidx.compose.material3.HorizontalDivider(color = BorderColor.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "Tokens to Transfer:", color = SilverGray, fontSize = 11.sp)
+                                    Text(
+                                        text = "${String.format("%.2f", enteredAmt)} USDT",
+                                        color = ElectricBlue,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
-                        } else {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Crypto Exchange Index", color = SilverGray, fontSize = 11.sp)
-                                Text("1 USD = 1.00 USDT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Button(
+                        onClick = {
+                            if (enteredAmt > 0.0) {
+                                depositStep = "TIMER_GENERATING_DETAILS"
                             }
-                            Divider(color = BorderColor.copy(alpha = 0.5f))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Tokens to Dispatch", color = SilverGray, fontSize = 11.sp)
-                                Text("${String.format("%.2f", enteredAmt)} USDT", color = ElectricBlue, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = enteredAmt > 0.0
+                    ) {
+                        Text(
+                            text = "CONFIRM & SECURE GATEWAY LINK",
+                            color = DeepObsidian,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                "TIMER_GENERATING_DETAILS" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(95.dp)) {
+                                CircularProgressIndicator(
+                                    progress = { animationPercentage / 100f },
+                                    color = EmeraldGreen,
+                                    strokeWidth = 5.dp,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Text(
+                                    text = "$animationPercentage%",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
+
+                            Text(
+                                text = "SECURING CRYPTO/BANK PROTOCOL",
+                                color = GoldAccent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+
+                            Text(
+                                text = "Pulling up target active gateway coordinates... Handshake secure. Generating destination credentials directly from settlement admin.",
+                                color = SilverGray,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 15.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                "PAYMENT_DETAILS" -> {
+                    val nairaRate = viewModel.getAdminNairaRate()
+                    val enteredAmt = entryAmount.toDoubleOrNull() ?: 0.0
+                    val totalNaira = enteredAmt * nairaRate
 
-                Button(
-                    onClick = {
-                        if (enteredAmt > 0.0) {
-                            depositStep = "TIMER_GENERATING_DETAILS"
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    shape = RoundedCornerShape(8.dp),
-                    enabled = enteredAmt > 0.0
-                ) {
-                    Text("PROCEED AND ESTABLISH PROTOCOL", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+                    val adminBankName = viewModel.getAdminBankName()
+                    val adminAccountNumber = viewModel.getAdminBankAccountNumber()
+                    val adminAccountName = viewModel.getAdminBankAccountName()
 
-            "TIMER_GENERATING_DETAILS" -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    Text(
+                        text = "DISPATCH TRANSLATION PACKET",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Transfer the precise required funds directly to the target system recovery coordinates provided below.",
+                        color = DarkGreyText,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Destination Parameters Card
+                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                        border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.5f))
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(90.dp)) {
-                            CircularProgressIndicator(
-                                progress = timerVal / 7f,
-                                color = EmeraldGreen,
-                                strokeWidth = 5.dp,
-                                modifier = Modifier.fillMaxSize()
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("ADMIN DESTINATION COORDINATES", color = GoldAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(GoldAccent.copy(alpha = 0.12f))
+                                        .clickable {
+                                            val targetNum = if (selectedMethod == "BANK") adminAccountNumber else "TYZ34sfdg91gHskf891sPqWzLkj91Mpx"
+                                            clipboardManager.setText(androidx.compose.ui.text.buildAnnotatedString { append(targetNum) })
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("COPY TARGET", color = GoldAccent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            if (selectedMethod == "BANK") {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Bank Name:", color = SilverGray, fontSize = 11.sp)
+                                    Text(adminBankName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Account Name:", color = SilverGray, fontSize = 11.sp)
+                                    Text(adminAccountName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Account Number:", color = SilverGray, fontSize = 11.sp)
+                                    Text(adminAccountNumber, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                androidx.compose.material3.HorizontalDivider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Conversion Rate Selected:", color = SilverGray, fontSize = 11.sp)
+                                    Text("1 USD = ₦${String.format("%,.0f", nairaRate)} NGN", color = DarkGreyText, fontSize = 10.sp)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Total Transfer Amount:", color = SilverGray, fontSize = 11.sp)
+                                    Text("₦${String.format("%,.2f", totalNaira)} NGN", color = EmeraldGreen, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                                }
+                            } else {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("USDT Token Protocol:", color = SilverGray, fontSize = 11.sp)
+                                    Text("TRC20 Blockchain Network", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Deposit Address Token:", color = SilverGray, fontSize = 11.sp)
+                                    Text("TYZ34sfdg91gHskf891sPqWz...1Mpx", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                androidx.compose.material3.HorizontalDivider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Amount to Send:", color = SilverGray, fontSize = 11.sp)
+                                    Text("${String.format("%.2f", enteredAmt)} USDT", color = ElectricBlue, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "SUBMIT SENDER VERIFICATION STACK",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Form Fields for manual deposit audit verification
+                    // Field 1: Sender Name
+                    OutlinedTextField(
+                        value = senderFullName,
+                        onValueChange = { senderFullName = it },
+                        label = { Text(if (selectedMethod == "BANK") "Your Full Account Holder Name" else "Your Source Wallet Account / Exchange Name", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Field 2: Sender Account Number / Sender Wallet Address
+                    OutlinedTextField(
+                        value = senderAccountNumber,
+                        onValueChange = { senderAccountNumber = it },
+                        label = { Text(if (selectedMethod == "BANK") "Your Account Number From Transfer" else "Your Outflow TRC20 Sender Wallet Address", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Field 3: Sender Bank / Network choice
+                    OutlinedTextField(
+                        value = senderBankName,
+                        onValueChange = { senderBankName = it },
+                        label = { Text(if (selectedMethod == "BANK") "Sender Outflow Bank Name" else "USDT Dispatch Network (e.g. TRC20)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Field 4: Reference ID
+                    OutlinedTextField(
+                        value = transactionId,
+                        onValueChange = { transactionId = it },
+                        label = { Text("Transfer Transaction ID / Reference (Optional)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    val isFormFilled = senderFullName.isNotBlank() && senderAccountNumber.isNotBlank() && senderBankName.isNotBlank()
+
+                    Button(
+                        onClick = {
+                            val amt = entryAmount.toDoubleOrNull() ?: 0.0
+                            val appliedRate = if (selectedMethod == "BANK") nairaRate else 1.0
+                            viewModel.deposit(
+                                amount = amt,
+                                senderName = senderFullName,
+                                senderAccountNumber = senderAccountNumber,
+                                senderBankName = senderBankName,
+                                paymentTransactionId = transactionId.ifBlank { null },
+                                conversionRate = appliedRate,
+                                localCurrencyAmount = amt * appliedRate,
+                                depositMethod = selectedMethod
                             )
+                            depositStep = "TIMER_CONFIRMATION"
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = isFormFilled
+                    ) {
+                        Text("DISPATCH PAYMENT FOR AUDITING", color = DeepObsidian, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                "TIMER_CONFIRMATION" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(EmeraldGreen.copy(alpha = 0.12f))
+                                    .border(2.dp, EmeraldGreen, CircleShape)
+                                    .padding(16.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Success",
+                                    tint = EmeraldGreen,
+                                    modifier = Modifier.size(54.dp)
+                                )
+                            }
+
                             Text(
-                                text = "${timerVal}s",
+                                text = "DEPOSIT DISPATCHED TO AUDIT QUEUE",
+                                color = EmeraldGreen,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+
+                            Text(
+                                text = "Your deposit verification payload loaded successfully. Funds are registered in internal pending audit. Balance is dispatched within 1 to 24 hours upon confirming actual bank or crypto inflow.",
                                 color = Color.White,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            )
+
+                            Text(
+                                text = "Returning to interface terminal in ${timerVal}s...",
+                                color = DarkGreyText,
+                                fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace
                             )
                         }
-
-                        Text(
-                            text = "SECURE PROTOCOL GENERATION",
-                            color = GoldAccent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-
-                        Text(
-                            text = "Spinning up Nigerian host account coordinates... Please hold on, details are loading in real-time.",
-                            color = SilverGray,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 15.sp
-                        )
                     }
                 }
             }
+        } else {
+            // --- WITHDRAWAL OPTION RENDER ---
+            var withdrawMethod by remember { mutableStateOf("BANK") } // "BANK" or "CRYPTO"
+            var inlineCryptoAddress by remember { mutableStateOf("") }
 
-            "PAYMENT_DETAILS" -> {
-                val nairaRate = viewModel.getAdminNairaRate()
-                val enteredAmt = entryAmount.toDoubleOrNull() ?: 0.0
-                val totalNaira = enteredAmt * nairaRate
+            Text(
+                text = "WITHDRAWAL FUNDS TERMINAL",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Request a secure, rapid withdrawal of your ledger balance. Payout configurations must be set active.",
+                color = DarkGreyText,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
 
-                val adminBankName = viewModel.getAdminBankName()
-                val adminAccountNumber = viewModel.getAdminBankAccountNumber()
-                val adminAccountName = viewModel.getAdminBankAccountName()
+            Spacer(modifier = Modifier.height(14.dp))
 
-                Text(
-                    text = "DISPATCH DEPOSIT TRANSFER",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Transfer the specified funds directly to the system destination and input your verification parameters.",
-                    color = DarkGreyText,
-                    fontSize = 11.sp
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Target Account Details Card
-                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+            // Option selection: BANK vs CRYPTO
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // LOCAL BANK card Selector
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-                    border = BorderStroke(1.dp, GoldAccent.copy(alpha=0.5f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("ADMIN TARGET RECOVERY", color = GoldAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(GoldAccent.copy(alpha = 0.12f))
-                                    .clickable {
-                                        val targetNum = if (selectedMethod == "BANK") adminAccountNumber else "TYZ34sfdg91gHskf891sPqWzLkj91Mpx"
-                                        clipboardManager.setText(androidx.compose.ui.text.buildAnnotatedString { append(targetNum) })
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Text("COPY NUMBER", color = GoldAccent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        if (selectedMethod == "BANK") {
-                            Text("Bank Name: $adminBankName", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Account Number: $adminAccountNumber", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                            Text("Account Name: $adminAccountName", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Amount to Pay (Naira):", color = SilverGray, fontSize = 11.sp)
-                                Text("₦${String.format("%,.2f", totalNaira)} NGN", color = EmeraldGreen, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Settlement Index Display:", color = SilverGray, fontSize = 11.sp)
-                                Text("1 USD = ₦${String.format("%,.2f", nairaRate)} NGN", color = DarkGreyText, fontSize = 10.sp)
-                            }
-                        } else {
-                            Text("Crypto Wallet Protocol: USDT (TRC20 Network)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Deposit Address: TYZ34sfdg91gHskf891sPqWzLkj91Mpx", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                            Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Tokens to Dispatch:", color = SilverGray, fontSize = 11.sp)
-                                Text("${String.format("%.2f", enteredAmt)} USDT", color = ElectricBlue, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // The 4 Fields Provided for verification
-                Text(
-                    text = "CONFIRMATION OF SENDER PAYLOAD",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field 1: Full Name
-                OutlinedTextField(
-                    value = senderFullName,
-                    onValueChange = { senderFullName = it },
-                    label = { Text(if (selectedMethod == "BANK") "Your Full Account Holder Name" else "Your Wallet / Exchange Source Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderColor,
-                        focusedLabelColor = EmeraldGreen,
-                        unfocusedLabelColor = DarkGreyText
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field 2: Account Number
-                OutlinedTextField(
-                    value = senderAccountNumber,
-                    onValueChange = { senderAccountNumber = it },
-                    label = { Text(if (selectedMethod == "BANK") "Your Outflow Account Number" else "Your Wallet Sender Address") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderColor,
-                        focusedLabelColor = EmeraldGreen,
-                        unfocusedLabelColor = DarkGreyText
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field 3: Bank Name
-                OutlinedTextField(
-                    value = senderBankName,
-                    onValueChange = { senderBankName = it },
-                    label = { Text(if (selectedMethod == "BANK") "Your Outflow Bank Name" else "Transfer Network Choice (e.g. TRC20)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderColor,
-                        focusedLabelColor = EmeraldGreen,
-                        unfocusedLabelColor = DarkGreyText
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field 4: Transaction ID (Optional)
-                OutlinedTextField(
-                    value = transactionId,
-                    onValueChange = { transactionId = it },
-                    label = { Text("Transfer Transaction ID / Reference (Optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = EmeraldGreen,
-                        unfocusedBorderColor = BorderColor,
-                        focusedLabelColor = EmeraldGreen,
-                        unfocusedLabelColor = DarkGreyText
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                val isFormFilled = senderFullName.isNotBlank() && senderAccountNumber.isNotBlank() && senderBankName.isNotBlank()
-
-                Button(
-                    onClick = {
-                        val amt = entryAmount.toDoubleOrNull() ?: 0.0
-                        val appliedRate = if (selectedMethod == "BANK") nairaRate else 1.0
-                        viewModel.deposit(
-                            amount = amt,
-                            senderName = senderFullName,
-                            senderAccountNumber = senderAccountNumber,
-                            senderBankName = senderBankName,
-                            paymentTransactionId = transactionId.ifBlank { null },
-                            conversionRate = appliedRate,
-                            localCurrencyAmount = amt * appliedRate,
-                            depositMethod = selectedMethod
-                        )
-                        depositStep = "TIMER_CONFIRMATION"
-                    },
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    shape = RoundedCornerShape(8.dp),
-                    enabled = isFormFilled
-                ) {
-                    Text("CONFIRM DEPOSIT TRANSFER", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            "TIMER_CONFIRMATION" -> {
-                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
+                        .weight(1f)
+                        .clickable { withdrawMethod = "BANK" },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (withdrawMethod == "BANK") DeepObsidian else DarkSlateCard
+                    ),
+                    border = BorderStroke(
+                        width = if (withdrawMethod == "BANK") 2.dp else 1.dp,
+                        color = if (withdrawMethod == "BANK") EmeraldGreen else BorderColor
+                    )
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(EmeraldGreen.copy(alpha = 0.12f))
-                                .border(2.dp, EmeraldGreen, CircleShape)
-                                .padding(16.dp)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Success",
-                                tint = EmeraldGreen,
-                                modifier = Modifier.size(54.dp)
+                                imageVector = Icons.Default.AccountBox,
+                                contentDescription = null,
+                                tint = if (withdrawMethod == "BANK") EmeraldGreen else SilverGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                "LOCAL BANK",
+                                color = if (withdrawMethod == "BANK") EmeraldGreen else Color.LightGray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
-
-                        Text(
-                            text = "DEPOSIT SENT TO AUDIT QUEUE",
-                            color = EmeraldGreen,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-
-                        Text(
-                            text = "Your deposit has been sent successfully. It is now registered inside the pending audit systems and will be approved by the admin within one to twenty four hours after confirming inflow.",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 16.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp)
-                        )
-
-                        Text(
-                            text = "Returning to interface terminal in ${timerVal}s...",
-                            color = DarkGreyText,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Text("Direct NGN Wire Transfer", color = DarkGreyText, fontSize = 9.sp)
                     }
                 }
-            }
-        }
-    } else {
-        // --- WITHDRAWAL OPTION RENDER ---
-        Text(
-            text = "WITHDRAWAL FUNDS TERMINAL",
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Submit a rapid checkout payload. Must possess a pre-configured binding protocol destination.",
-            color = DarkGreyText,
-            fontSize = 11.sp
-        )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Form Field
-        OutlinedTextField(
-            value = entryAmount,
-            onValueChange = { entryAmount = it.filter { c -> c.isDigit() || c == '.' } },
-            label = { Text("Amount Target ($)") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            leadingIcon = { Text("$", color = EmeraldGreen, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = EmeraldGreen,
-                unfocusedBorderColor = BorderColor,
-                focusedLabelColor = EmeraldGreen,
-                unfocusedLabelColor = DarkGreyText
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Checking binding status before withdrawal
-        val isBankLinked = !user?.boundBankAccount.isNullOrBlank()
-        val isCryptoLinked = !user?.boundCryptoAddress.isNullOrBlank()
-        val canWithdraw = isBankLinked || isCryptoLinked
-
-        if (!canWithdraw) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(LossRed.copy(alpha = 0.12f))
-                    .border(1.dp, LossRed.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                    .padding(12.dp)
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = LossRed, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "SECURITY AUDIT REJECTED", color = LossRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "A withdrawal request cannot be parsed because no payment gateway is bound. Please link an active bank account or blockchain wallet first inside the Settings tab.",
-                        color = SilverGray,
-                        fontSize = 10.sp,
-                        lineHeight = 13.sp
+                // CRYPTO card Selector
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { withdrawMethod = "CRYPTO" },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (withdrawMethod == "CRYPTO") DeepObsidian else DarkSlateCard
+                    ),
+                    border = BorderStroke(
+                        width = if (withdrawMethod == "CRYPTO") 2.dp else 1.dp,
+                        color = if (withdrawMethod == "CRYPTO") ElectricBlue else BorderColor
                     )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = if (withdrawMethod == "CRYPTO") ElectricBlue else SilverGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                "USDT (TRC20)",
+                                color = if (withdrawMethod == "CRYPTO") ElectricBlue else Color.LightGray,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text("Rapid Crypto Blockchain", color = DarkGreyText, fontSize = 9.sp)
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
 
-        Button(
-            onClick = {
-                val amt = entryAmount.toDoubleOrNull() ?: 0.0
-                if (amt <= 0.0) return@Button
-                viewModel.withdraw(amt)
-                entryAmount = ""
-            },
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-            shape = RoundedCornerShape(8.dp),
-            enabled = canWithdraw
-        ) {
-            Text(
-                text = "DISPATCH WITHDRAW PROTOCOL",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
-            )
+            Spacer(modifier = Modifier.height(18.dp))
+
+            if (withdrawMethod == "BANK") {
+                // Check if user has a bank account linked
+                val isBankLinked = !user?.boundBankAccount.isNullOrBlank()
+
+                if (!isBankLinked) {
+                    // Redirect Warning Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                        border = BorderStroke(1.dp, LossRed.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = LossRed,
+                                modifier = Modifier.size(34.dp)
+                            )
+                            Text(
+                                text = "LOCAL BANK DETAILS NOT BINDED (REQUIRED)",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "To retrieve payments directly to local bank accounts, you must first specify your bank outlet and account Swift IBAN coordinate. Click below to go to Settings automatically.",
+                                color = SilverGray,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Button(
+                                onClick = { onNavigateToTab("settings") },
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("REDIRECT TO SETTINGS TAB", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    // Bank details set! Render Form & The beautiful conversion green box
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("TARGET RECEIVED ACCOUNT SETTLED", color = DarkGreyText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("Bank Outlet: ${user?.boundBankName}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Account IBAN/Num: ${user?.boundBankAccount}", color = EmeraldGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    OutlinedTextField(
+                        value = entryAmount,
+                        onValueChange = { entryAmount = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("Checkout Cash Target Amount ($)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = { Text("$", color = EmeraldGreen, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldGreen,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = EmeraldGreen,
+                            unfocusedLabelColor = DarkGreyText,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Green Box for Local Bank withdrawal rate conversions
+                    val withdrawalNairaRate = viewModel.getAdminWithdrawalNairaRate()
+                    val usdAmount = entryAmount.toDoubleOrNull() ?: 0.0
+                    val totalNairaEquivalent = usdAmount * withdrawalNairaRate
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.08f)),
+                        border = BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.6f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "REAL-TIME SETTLEMENT CALCULATION",
+                                color = EmeraldGreen,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Withdrawal Transfer Rate:", color = SilverGray, fontSize = 11.sp)
+                                Text("1 USD = ₦${String.format("%,.0f", withdrawalNairaRate)} NGN", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            HorizontalDivider(color = EmeraldGreen.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Naira Settlement Balance:", color = SilverGray, fontSize = 11.sp)
+                                Text("₦${String.format("%,.2f", totalNairaEquivalent)} NGN", color = EmeraldGreen, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            val amt = entryAmount.toDoubleOrNull() ?: 0.0
+                            if (amt <= 0.0) return@Button
+                            viewModel.withdraw(amt, isCrypto = false)
+                            entryAmount = ""
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = usdAmount > 0.0
+                    ) {
+                        Text(
+                            text = "DISPATCH BANK WITHDRAW PROTOCOL",
+                            color = DeepObsidian,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            } else {
+                // Cryptocurrency (USDT TRC20) Withdrawal Flow
+                val isCryptoLinked = !user?.boundCryptoAddress.isNullOrBlank()
+
+                if (!isCryptoLinked) {
+                    // Prompt user inline to enter address and bind right away!
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                        border = BorderStroke(1.dp, ElectricBlue.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                                Text("NO TRC20 WALLET ADAPTER BINDS DETECTED", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                text = "Specify your target USDT (TRC-20 Network) wallet address inline below to instantly bind it and open direct blockchain transit channels:",
+                                color = DarkGreyText,
+                                fontSize = 10.sp,
+                                lineHeight = 13.sp
+                            )
+
+                            OutlinedTextField(
+                                value = inlineCryptoAddress,
+                                onValueChange = { inlineCryptoAddress = it.trim() },
+                                label = { Text("Enter TRC20 Wallet Address ($)", fontSize = 10.sp) },
+                                placeholder = { Text("TXXXXXXXXXXXX...") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ElectricBlue,
+                                    unfocusedBorderColor = BorderColor,
+                                    unfocusedTextColor = Color.White,
+                                    focusedTextColor = Color.White
+                                )
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (inlineCryptoAddress.isNotBlank()) {
+                                        viewModel.bindCrypto(inlineCryptoAddress)
+                                        inlineCryptoAddress = ""
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = inlineCryptoAddress.length >= 24
+                            ) {
+                                Text("BIND WALLET ADDRESS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    // Crypto details set! Render amount input & 1:1 conversion green box
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("TARGET REGISTERED BLOCKCHAIN WALLET", color = DarkGreyText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("Protocol: USDT ERC20/TRC20 Adapter", color = Color.White, fontSize = 10.sp)
+                            Text("Address: ${user?.boundCryptoAddress}", color = ElectricBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    OutlinedTextField(
+                        value = entryAmount,
+                        onValueChange = { entryAmount = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("Checkout Amount to Withdraw ($)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = { Text("$", color = ElectricBlue, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElectricBlue,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = ElectricBlue,
+                            unfocusedLabelColor = DarkGreyText,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Green conversion box but for Crypto 1:1
+                    val usdAmount = entryAmount.toDoubleOrNull() ?: 0.0
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.08f)),
+                        border = BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.6f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "BLOCKCHAIN STABLE PARITY RATE",
+                                color = EmeraldGreen,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Token Conversion Ratio:", color = SilverGray, fontSize = 11.sp)
+                                Text("1.00 USD = 1.00 USDT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            HorizontalDivider(color = EmeraldGreen.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Estimated USDT Disbursed:", color = SilverGray, fontSize = 11.sp)
+                                Text("${String.format("%.2f", usdAmount)} USDT", color = EmeraldGreen, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            val amt = entryAmount.toDoubleOrNull() ?: 0.0
+                            if (amt <= 0.0) return@Button
+                            viewModel.withdraw(amt, isCrypto = true)
+                            entryAmount = ""
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = usdAmount > 0.0
+                    ) {
+                        Text(
+                            text = "DISPATCH CRYPTO BLOCKCHAIN WIRE",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -2593,283 +3269,568 @@ fun SettingsSecuritySubTab(
     user: User?,
     viewModel: InvestmentViewModel
 ) {
+    var fullName by remember { mutableStateOf(user?.fullName ?: "") }
+    var ageVal by remember { mutableStateOf(user?.age?.toString() ?: "0") }
     var bankName by remember { mutableStateOf(user?.boundBankName ?: "") }
     var accountNum by remember { mutableStateOf(user?.boundBankAccount ?: "") }
     var cryptoAddress by remember { mutableStateOf(user?.boundCryptoAddress ?: "") }
     var oldPass by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
-
-    Text(
-        text = "PAYMENT SYSTEM BINDINGS",
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-
-    OutlinedTextField(
-        value = bankName,
-        onValueChange = { bankName = it },
-        label = { Text("Bank Outlet Name") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    OutlinedTextField(
-        value = accountNum,
-        onValueChange = { accountNum = it },
-        label = { Text("Bank Swift IBAN/Card Code") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Button(
-        onClick = { viewModel.bindBank(bankName, accountNum) },
-        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(text = "BIND EXCLUSIVE BANK", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-
-    Spacer(modifier = Modifier.height(14.dp))
-    Divider(color = BorderColor)
-    Spacer(modifier = Modifier.height(14.dp))
-
-    Text(
-        text = "BLOCKCHAIN USDT WALLET BINDING",
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    OutlinedTextField(
-        value = cryptoAddress,
-        onValueChange = { cryptoAddress = it },
-        label = { Text("Crypto Receives Wallet (USDT-TRC20)") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Button(
-        onClick = { viewModel.bindCrypto(cryptoAddress) },
-        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(text = "BIND CRYPTO ADDRESS", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-
-    Spacer(modifier = Modifier.height(14.dp))
-    Divider(color = BorderColor)
-    Spacer(modifier = Modifier.height(14.dp))
-
-    Text(
-        text = "SUPABASE CLOUD DATABASE GATEWAY",
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        text = "Link your custom Remote Supabase PostgreSQL instance to persist, backup, and live-synchronize all credentials, transaction history, active plans, and stakes securely. When connected, your account persists 100% even if the app is reinstalled or recompiled.",
-        color = DarkGreyText,
-        fontSize = 11.sp,
-        lineHeight = 15.sp
-    )
-    Spacer(modifier = Modifier.height(10.dp))
-
-    var showSqlInstructions by remember { mutableStateOf(false) }
-    
-    Button(
-        onClick = { showSqlInstructions = !showSqlInstructions },
-        colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
-        shape = RoundedCornerShape(6.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = if (showSqlInstructions) "HIDE SQL SETUP SCRIPT" else "SHOW SQL SETUP SCRIPT",
-            color = Color.White,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-
-    if (showSqlInstructions) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = DeepObsidian),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "Execute this SQL inside your Supabase SQL Editor on your project to instantiate the custom sync engine:",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                androidx.compose.foundation.text.selection.SelectionContainer {
-                    Text(
-                        text = """
-                            CREATE TABLE IF NOT EXISTS zelox_cloud_sync (
-                              key TEXT PRIMARY KEY,
-                              value TEXT NOT NULL
-                            );
-                            
-                            -- Enable RLS and add public access policies for anon authentication
-                            ALTER TABLE zelox_cloud_sync ENABLE ROW LEVEL SECURITY;
-                            
-                            CREATE POLICY "Allow select on sync" 
-                              ON zelox_cloud_sync FOR SELECT USING (true);
-                              
-                            CREATE POLICY "Allow insert on sync" 
-                              ON zelox_cloud_sync FOR INSERT WITH CHECK (true);
-                              
-                            CREATE POLICY "Allow update on sync" 
-                              ON zelox_cloud_sync FOR UPDATE USING (true) WITH CHECK (true);
-                        """.trimIndent(),
-                        color = GoldAccent,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        lineHeight = 14.sp
-                    )
-                }
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
+    var confirmNewPass by remember { mutableStateOf("") }
 
     var settingsSupabaseUrl by remember { mutableStateOf(viewModel.getSupabaseUrl()) }
     var settingsSupabaseKey by remember { mutableStateOf(viewModel.getSupabaseKey()) }
     val isSupabaseActiveSet = viewModel.getSupabaseUrl().isNotBlank()
+    var showSqlInstructions by remember { mutableStateOf(false) }
 
-    OutlinedTextField(
-        value = settingsSupabaseUrl,
-        onValueChange = { settingsSupabaseUrl = it.trim() },
-        label = { Text("Supabase API URL") },
-        placeholder = { Text("https://your-project.supabase.co") },
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    OutlinedTextField(
-        value = settingsSupabaseKey,
-        onValueChange = { settingsSupabaseKey = it.trim() },
-        label = { Text("Supabase Public Anon Key") },
-        placeholder = { Text("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(10.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Button(
-            onClick = { viewModel.testSupabaseAndSync(settingsSupabaseUrl, settingsSupabaseKey) },
-            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-            shape = RoundedCornerShape(6.dp),
-            modifier = Modifier.weight(1.5f)
+        // Welcome Header info with stats
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.25f))
         ) {
-            Text(text = "CONNECT & SYNC", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-        if (isSupabaseActiveSet) {
-            Button(
-                onClick = { viewModel.syncCurrentUserDataToCloud() },
-                colors = ButtonDefaults.buttonColors(containerColor = GoldAccent),
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.weight(1.2f)
+            Row(
+                modifier = Modifier.padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "FORCE SYNC", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            Button(
-                onClick = {
-                    viewModel.disconnectSupabase()
-                    settingsSupabaseUrl = ""
-                    settingsSupabaseKey = ""
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = LossRed),
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(text = "DISCONNECT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(EmeraldGreen.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                }
+                Column {
+                    Text(
+                        text = "ACCOUNT PREFERENCES & CORE SECURITY",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "Customize your profile name, change secure pins, link bank transfer gateways, and configure cloud synchronization.",
+                        color = DarkGreyText,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    )
+                }
             }
         }
-    }
 
-    Spacer(modifier = Modifier.height(14.dp))
-    Divider(color = BorderColor)
-    Spacer(modifier = Modifier.height(14.dp))
-
-    Text(
-        text = "ALTER ACCESS CREDENTIALS",
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    OutlinedTextField(
-        value = oldPass,
-        onValueChange = { oldPass = it },
-        label = { Text("Current Pin Pass") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    OutlinedTextField(
-        value = newPass,
-        onValueChange = { newPass = it },
-        label = { Text("New Pin Pass") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Button(
-        onClick = {
-            viewModel.changePassword(oldPass, newPass)
-            oldPass = ""
-            newPass = ""
-        },
-        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-        shape = RoundedCornerShape(6.dp)
-    ) {
-        Text(text = "UPDATE PASSWORD", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-
-    Spacer(modifier = Modifier.height(14.dp))
-    Divider(color = BorderColor)
-    Spacer(modifier = Modifier.height(14.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Button(
-            onClick = { viewModel.resetDemoAccount() },
-            colors = ButtonDefaults.buttonColors(containerColor = LossRed),
-            shape = RoundedCornerShape(8.dp)
+        // Section 1: Edit Profile Preferences (Name and Age)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
         ) {
-            Text(text = "RESET PORTFOLIO", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "PROFILE PREFERENCES",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Text(
+                    text = "Configure your official display identification name and registered profile age to satisfy network KYC verification.",
+                    color = DarkGreyText,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                )
+
+                OutlinedTextField(
+                    value = fullName,
+                    onValueChange = { fullName = it },
+                    label = { Text("Display Full Name", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = ageVal,
+                    onValueChange = { ageVal = it.filter { c -> c.isDigit() } },
+                    label = { Text("Profile Age", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.updateFullName(fullName) },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(text = "SAVE NAME", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = { viewModel.updateAge(ageVal.toIntOrNull() ?: 0) },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(text = "SAVE AGE", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
-        Button(
-            onClick = { viewModel.logout() },
-            colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
-            shape = RoundedCornerShape(8.dp)
+
+        // Section 2: Local Bank Account Binding Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
         ) {
-            Text(text = "CLOSE CHANNEL", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.AccountBox, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "LOCAL BANK SETTLE ADDRESS",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Text(
+                    text = "Bound account required directly to request and process local fiat bank withdrawals.",
+                    color = DarkGreyText,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                )
+                
+                OutlinedTextField(
+                    value = bankName,
+                    onValueChange = { bankName = it },
+                    label = { Text("Bank Outlet Name", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = accountNum,
+                    onValueChange = { accountNum = it.filter { c -> c.isDigit() || c.isLetter() } },
+                    label = { Text("Account / Card Swift IBAN", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                Button(
+                    onClick = { viewModel.bindBank(bankName, accountNum) },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(text = "SAVE & BIND BANK SETTLEMENTS", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
+
+        // Section 3: Blockchain Wallet Binding Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "BLOCKCHAIN USDT WALLET (TRC20)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Text(
+                    text = "Enables rapid, borderless payouts in standard stable crypto currency. Ensure network remains TRC-20.",
+                    color = DarkGreyText,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                )
+
+                OutlinedTextField(
+                    value = cryptoAddress,
+                    onValueChange = { cryptoAddress = it.trim() },
+                    label = { Text("Crypto Receives Wallet (USDT-TRC20)", fontSize = 11.sp) },
+                    placeholder = { Text("TXXXXXXXXXXXX...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = ElectricBlue,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                Button(
+                    onClick = { viewModel.bindCrypto(cryptoAddress) },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(text = "SAVE & BIND TRC20 ENDPOINT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Section 4: Alter Access Passphrase Card (with confirmation)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "ALTER ACCOUNT ACCESS PASS",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Text(
+                    text = "Enter your current secure code, then input your new security pin and confirm it to apply the rewrite.",
+                    color = DarkGreyText,
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp
+                )
+
+                OutlinedTextField(
+                    value = oldPass,
+                    onValueChange = { oldPass = it },
+                    label = { Text("Current Pin / Code Key", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = newPass,
+                    onValueChange = { newPass = it },
+                    label = { Text("New Pin / Code Key", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = confirmNewPass,
+                    onValueChange = { confirmNewPass = it },
+                    label = { Text("Confirm New Pin / Code Key", fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldGreen,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = EmeraldGreen,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                val passwordsMatch = newPass == confirmNewPass
+                if (newPass.isNotEmpty() && confirmNewPass.isNotEmpty()) {
+                    Text(
+                        text = if (passwordsMatch) "✓ New pin confirms fit and match." else "✗ New pins do not match.",
+                        color = if (passwordsMatch) EmeraldGreen else LossRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Button(
+                    enabled = passwordsMatch && oldPass.isNotEmpty() && newPass.isNotEmpty(),
+                    onClick = {
+                        viewModel.changePassword(oldPass, newPass)
+                        oldPass = ""
+                        newPass = ""
+                        confirmNewPass = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldGreen,
+                        disabledContainerColor = BorderColor.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(text = "COMMIT CREDENTIAL REWRITE", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Section 5: Supabase Cloud Sync Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "SUPABASE CLOUD SYNC GATEWAY",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+                Text(
+                    text = "Backup balance, stakes, and ledger transaction database rows continuously to a custom PostgreSQL remote cloud node.",
+                    color = DarkGreyText,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+
+                Button(
+                    onClick = { showSqlInstructions = !showSqlInstructions },
+                    colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (showSqlInstructions) "HIDE SQL SETUP TEMPLATE" else "SHOW SQL SETUP TEMPLATE",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (showSqlInstructions) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "Run this script inside your Supabase Project SQL Editor to build tables:",
+                                color = Color.LightGray,
+                                fontSize = 9.sp,
+                                lineHeight = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    text = """
+                                        CREATE TABLE IF NOT EXISTS zelox_cloud_sync (
+                                          key TEXT PRIMARY KEY,
+                                          value TEXT NOT NULL
+                                        );
+                                        ALTER TABLE zelox_cloud_sync ENABLE ROW LEVEL SECURITY;
+                                        CREATE POLICY "Allow select on sync" ON zelox_cloud_sync FOR SELECT USING (true);
+                                        CREATE POLICY "Allow insert on sync" ON zelox_cloud_sync FOR INSERT WITH CHECK (true);
+                                        CREATE POLICY "Allow update on sync" ON zelox_cloud_sync FOR UPDATE USING (true) WITH CHECK (true);
+                                    """.trimIndent(),
+                                    color = GoldAccent,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.sp,
+                                    lineHeight = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = settingsSupabaseUrl,
+                    onValueChange = { settingsSupabaseUrl = it.trim() },
+                    label = { Text("Supabase Endpoint API URL", fontSize = 11.sp) },
+                    placeholder = { Text("https://your-proj.supabase.co") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = GoldAccent,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = settingsSupabaseKey,
+                    onValueChange = { settingsSupabaseKey = it.trim() },
+                    label = { Text("Supabase Public Anon Key", fontSize = 11.sp) },
+                    placeholder = { Text("public-anon-key-string...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
+                        focusedLabelColor = GoldAccent,
+                        unfocusedTextColor = Color.White,
+                        focusedTextColor = Color.White
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.testSupabaseAndSync(settingsSupabaseUrl, settingsSupabaseKey) },
+                        colors = ButtonDefaults.buttonColors(containerColor = GoldAccent),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = "CONNECT & SYNC", color = DeepObsidian, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    if (isSupabaseActiveSet) {
+                        Button(
+                            onClick = { viewModel.syncCurrentUserDataToCloud() },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "FORCE BACKUP", color = DeepObsidian, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.disconnectSupabase()
+                                settingsSupabaseUrl = ""
+                                settingsSupabaseKey = ""
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(0.9f)
+                        ) {
+                            Text(text = "DISCONNECT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 6: Control Panel Exit Channels Cards
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, LossRed.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.resetDemoAccount() },
+                    colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "RESET PORTFOLIO", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = { viewModel.logout() },
+                    colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "CLOSE CHANNEL", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -2882,13 +3843,6 @@ fun MarketScreen(
     onNavigateToPlanDetail: (String) -> Unit
 ) {
     val plans by viewModel.allPlans.collectAsState()
-
-    var isCreatingByAdmin by remember { mutableStateOf(false) }
-    var inPlanName by remember { mutableStateOf("") }
-    var inPlanAmount by remember { mutableStateOf("") }
-    var inPlanPercent by remember { mutableStateOf("") }
-    var inPlanTerm by remember { mutableStateOf("") }
-    var inPlanDesc by remember { mutableStateOf("") }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -2948,114 +3902,6 @@ fun MarketScreen(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                    }
-                }
-            }
-
-            // 👑 Admin Creation Panel Trigger Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.4f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable { isCreatingByAdmin = !isCreatingByAdmin },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(imageVector = Icons.Default.Settings, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = "👑 CORES CONTROL PANEL (ADMIN MODE)", color = GoldAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Icon(
-                                imageVector = if (isCreatingByAdmin) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                tint = GoldAccent
-                            )
-                        }
-
-                        if (isCreatingByAdmin) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(text = "Deploy custom yield plan contract parameters below.", color = DarkGreyText, fontSize = 11.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            OutlinedTextField(
-                                value = inPlanName,
-                                onValueChange = { inPlanName = it },
-                                label = { Text("Plan Contract Name") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = inPlanAmount,
-                                onValueChange = { inPlanAmount = it.filter { c -> c.isDigit() || c == '.' } },
-                                label = { Text("Purchase Amount/Cost ($)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = inPlanPercent,
-                                onValueChange = { inPlanPercent = it.filter { c -> c.isDigit() || c == '.' } },
-                                label = { Text("Daily ROI Rate (%)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = inPlanTerm,
-                                onValueChange = { inPlanTerm = it.filter { c -> c.isDigit() } },
-                                label = { Text("Term Payout Duration (Days)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = inPlanDesc,
-                                onValueChange = { inPlanDesc = it },
-                                label = { Text("Description Paragraph") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = EmeraldGreen)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Button(
-                                onClick = {
-                                    val amt = inPlanAmount.toDoubleOrNull() ?: 0.0
-                                    val pct = inPlanPercent.toDoubleOrNull() ?: 0.0
-                                    val term = inPlanTerm.toIntOrNull() ?: 0
-                                    if (inPlanName.isNotBlank() && amt > 0.0 && pct > 0.0 && term > 0 && inPlanDesc.isNotBlank()) {
-                                        viewModel.addAdminPlan(inPlanName, amt, pct, term, inPlanDesc)
-                                        inPlanName = ""
-                                        inPlanAmount = ""
-                                        inPlanPercent = ""
-                                        inPlanTerm = ""
-                                        inPlanDesc = ""
-                                        isCreatingByAdmin = false
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(44.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GoldAccent)
-                            ) {
-                                Text(text = "DEPLOY SECURE YIELD PLAN", color = DeepObsidian, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
                     }
                 }
             }
@@ -3304,36 +4150,91 @@ fun TransactionsScreen(
             items(txs) { tx ->
                 val isPositive = tx.type in listOf("DEPOSIT", "TASK_REWARD", "SPIN_WIN", "REFERRAL_BONUS", "ROI_CLAIM")
                 val prefix = if (isPositive) "+" else "-"
-                val themeColor = if (isPositive) EmeraldGreen else LossRed
+
+                // Determine layout & theme color based on transaction status
+                val isPending = tx.status == "PENDING"
+                val isRejected = tx.status == "REJECTED"
+
+                val statusLabel = when (tx.status) {
+                    "PENDING" -> "PENDING"
+                    "REJECTED" -> "REJECTED"
+                    else -> "COMPLETED"
+                }
+
+                val statusColor = when (tx.status) {
+                    "PENDING" -> GoldAccent
+                    "REJECTED" -> LossRed
+                    else -> EmeraldGreen
+                }
+
+                val amountColor = if (isPending) {
+                    GoldAccent
+                } else if (isRejected) {
+                    LossRed
+                } else {
+                    if (isPositive) EmeraldGreen else LossRed
+                }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-                    border = BorderStroke(1.dp, BorderColor)
+                    border = BorderStroke(1.dp, if (isPending) GoldAccent.copy(alpha = 0.4f) else if (isRejected) LossRed.copy(alpha = 0.4f) else BorderColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(text = tx.planName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = "Action: ${tx.type}",
-                                color = DarkGreyText,
-                                fontSize = 11.sp
-                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "Action: ${tx.type}",
+                                    color = DarkGreyText,
+                                    fontSize = 11.sp
+                                )
+                                // If there are custom deposit details, add a small info badge for method
+                                if (tx.depositMethod != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.White.copy(alpha = 0.08f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(text = tx.depositMethod, color = SilverGray, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                             val fStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
                             Text(text = fStr, color = DarkGreyText, fontSize = 10.sp)
                         }
 
-                        Text(
-                            text = "$prefix$${String.format("%.2f", tx.totalAmount)}",
-                            color = themeColor,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "$prefix$${String.format("%.2f", tx.totalAmount)}",
+                                color = amountColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            // Draw status badge
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(statusColor.copy(alpha = 0.12f))
+                                    .border(1.dp, statusColor, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = statusLabel,
+                                    color = statusColor,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -3344,6 +4245,8 @@ fun TransactionsScreen(
     }
 }
 
+// ==========================================
+// 9. SECURE ADMINISTRATIVE PANEL GATED GATEWAY
 // ==========================================
 // 9. SECURE ADMINISTRATIVE PANEL GATED GATEWAY
 // ==========================================
@@ -3359,7 +4262,7 @@ fun AdminPanelScreen(
     val plans by viewModel.allPlans.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("PENDING AUDITS", "CLIENT DIRECTORY", "YIELD CREATOR")
+    val tabs = listOf("DEPOSITS", "WITHDRAWALS", "CLIENT DIRECTORY", "YIELD CREATOR", "PLATFORM SETTINGS")
 
     // Stats variables
     val totalUsers = users.size
@@ -3464,9 +4367,11 @@ fun AdminPanelScreen(
                     .weight(1f)
             ) {
                 when (selectedTab) {
-                    0 -> AdminPendingAuditsTab(pendingTxs = pendingTxs, viewModel = viewModel)
-                    1 -> AdminClientsDirectoryTab(users = users)
-                    2 -> AdminYieldCreatorTab(plans = plans, viewModel = viewModel)
+                    0 -> AdminDepositsTab(viewModel = viewModel)
+                    1 -> AdminWithdrawalsTab(viewModel = viewModel)
+                    2 -> AdminClientsDirectoryTab(users = users)
+                    3 -> AdminYieldCreatorTab(plans = plans, viewModel = viewModel)
+                    4 -> AdminPlatformSettingsTab(viewModel = viewModel)
                 }
             }
         }
@@ -3474,22 +4379,53 @@ fun AdminPanelScreen(
 }
 
 @Composable
-fun AdminPendingAuditsTab(
-    pendingTxs: List<InvestmentTransaction>,
+fun AdminDepositsTab(
     viewModel: InvestmentViewModel
 ) {
-    if (pendingTxs.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(10.dp))
-                Text("All accounts synchronized. Audit queue empty.", color = DarkGreyText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
+    val allTransactions by viewModel.allGlobalTransactions.collectAsState()
+    
+    // Filter to only DEPOSITS
+    val deposits = remember(allTransactions) { allTransactions.filter { it.type == "DEPOSIT" } }
+    val pendingDeposits = remember(deposits) { deposits.filter { it.status == "PENDING" } }
+    val processedDeposits = remember(deposits) {
+        deposits.filter { it.status == "APPROVED" || it.status == "REJECTED" }
+            .sortedByDescending { it.timestamp }
+    }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item {
+            Text(
+                "PENDING DEPOSIT REQUESTS (${pendingDeposits.size})",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
-    } else {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(pendingTxs) { tx ->
-                val labelColor = if (tx.type == "DEPOSIT") EmeraldGreen else ElectricBlue
+
+        if (pendingDeposits.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.3f))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(28.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("No pending deposit requests in the queue.", color = DarkGreyText, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        } else {
+            items(pendingDeposits) { tx ->
+                val labelColor = EmeraldGreen
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
@@ -3523,6 +4459,65 @@ fun AdminPendingAuditsTab(
                         val dateString = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
                         Text(text = "Requested: $dateString", color = DarkGreyText, fontSize = 9.sp)
 
+                        // If there are detailed sender fields, display them in an Auditing Panel inside the Card!
+                        if (tx.senderName != null || tx.senderAccountNumber != null || tx.senderBankName != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                                border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.4f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "CLIENT FUNDING AUDIT PAYLOAD",
+                                        color = GoldAccent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    androidx.compose.material3.HorizontalDivider(color = BorderColor.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 2.dp))
+
+                                    val isBank = tx.depositMethod == "BANK"
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Holder Account Name:" else "Exchange/Wallet Name:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderName ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Sender Account Number:" else "TRC20 Wallet Address:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderAccountNumber ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Outflowing Bank Name:" else "Blockchain Network:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderBankName ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    if (tx.paymentTransactionId != null) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(text = "Transaction Hash/ID:", color = SilverGray, fontSize = 10.sp)
+                                            Text(text = tx.paymentTransactionId, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                    if (tx.localCurrencyAmount != null && tx.localCurrencyAmount > 0.0) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(text = if (isBank) "Required Naira Flow:" else "Required Crypto Flow:", color = SilverGray, fontSize = 10.sp)
+                                            val curSign = if (isBank) "₦" else "$"
+                                            val curCode = if (isBank) "NGN" else "USDT"
+                                            Text(
+                                                text = "$curSign${String.format("%,.2f", tx.localCurrencyAmount)} $curCode",
+                                                color = if (isBank) EmeraldGreen else ElectricBlue,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3550,9 +4545,563 @@ fun AdminPendingAuditsTab(
                 }
             }
         }
+
+        // Historic Processed Ledger
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                "HISTORIC DEPOSIT ARCHIVES (${processedDeposits.size})",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        if (processedDeposits.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.2f))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("No historic deposit audits in system archives.", color = DarkGreyText, fontSize = 10.sp)
+                    }
+                }
+            }
+        } else {
+            items(processedDeposits) { tx ->
+                val isApproved = tx.status == "APPROVED"
+                val statusColor = if (isApproved) EmeraldGreen else LossRed
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.25f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    imageVector = if (isApproved) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = statusColor,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = tx.type + " [${tx.status}]",
+                                    color = statusColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = "$${String.format("%.2f", tx.totalAmount)}",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Client User: @${tx.username}", color = SilverGray, fontSize = 10.sp)
+                            val dateStr = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(tx.timestamp))
+                            Text("Logged: $dateStr", color = DarkGreyText, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        }
+
+                        Text("Destination Info: ${tx.planName}", color = DarkGreyText, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
+@Composable
+fun AdminWithdrawalsTab(
+    viewModel: InvestmentViewModel
+) {
+    val allTransactions by viewModel.allGlobalTransactions.collectAsState()
+    
+    // Filter to only WITHDRAWALS
+    val withdrawals = remember(allTransactions) { allTransactions.filter { it.type == "WITHDRAWAL" } }
+    val pendingWithdrawals = remember(withdrawals) { withdrawals.filter { it.status == "PENDING" } }
+    val processedWithdrawals = remember(withdrawals) {
+        withdrawals.filter { it.status == "APPROVED" || it.status == "REJECTED" }
+            .sortedByDescending { it.timestamp }
+    }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item {
+            Text(
+                "PENDING WITHDRAWAL REQUESTS (${pendingWithdrawals.size})",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        if (pendingWithdrawals.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.3f))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(28.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("No pending withdrawal requests in the queue.", color = DarkGreyText, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        } else {
+            items(pendingWithdrawals) { tx ->
+                val labelColor = ElectricBlue
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(labelColor.copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                ) {
+                                    Text(text = tx.type, color = labelColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = tx.username, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Text(
+                                text = "$${String.format("%.2f", tx.totalAmount)}",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        Text(text = "Payout Channel: ${tx.planName}", color = SilverGray, fontSize = 11.sp)
+                        val dateString = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(tx.timestamp))
+                        Text(text = "Requested: $dateString", color = DarkGreyText, fontSize = 9.sp)
+
+                        // Display detailed destination/holder payload
+                        if (tx.senderName != null || tx.senderAccountNumber != null || tx.senderBankName != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                                border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.4f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "CLIENT PAYOUT SETTLEMENT DETAILS",
+                                        color = GoldAccent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    androidx.compose.material3.HorizontalDivider(color = BorderColor.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 2.dp))
+
+                                    val isBank = tx.depositMethod == "BANK" || !tx.planName.contains("USDT", ignoreCase = true)
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Holder Account Name:" else "Exchange/Wallet Name:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderName ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Receiving Account Number:" else "TRC20 Wallet Address:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderAccountNumber ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = if (isBank) "Receiving Bank Name:" else "Blockchain Network:", color = SilverGray, fontSize = 10.sp)
+                                        Text(text = tx.senderBankName ?: "N/A", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    if (tx.localCurrencyAmount != null && tx.localCurrencyAmount > 0.0) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(text = "Paying Out Flow Value:", color = SilverGray, fontSize = 10.sp)
+                                            val curSign = if (isBank) "₦" else "$"
+                                            val curCode = if (isBank) "NGN" else "USDT"
+                                            Text(
+                                                text = "$curSign${String.format("%,.2f", tx.localCurrencyAmount)} $curCode",
+                                                color = if (isBank) EmeraldGreen else ElectricBlue,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider(color = BorderColor, modifier = Modifier.padding(vertical = 4.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Reject Trigger Button
+                            Button(
+                                onClick = { viewModel.rejectTransaction(tx.id) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("REJECT", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Accept Trigger Button
+                            Button(
+                                onClick = { viewModel.approveTransaction(tx.id) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("APPROVE", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Historic Processed Ledger
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                "HISTORIC WITHDRAWAL ARCHIVES (${processedWithdrawals.size})",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
+
+        if (processedWithdrawals.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.2f))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("No historic withdrawal audits in system archives.", color = DarkGreyText, fontSize = 10.sp)
+                    }
+                }
+            }
+        } else {
+            items(processedWithdrawals) { tx ->
+                val isApproved = tx.status == "APPROVED"
+                val statusColor = if (isApproved) EmeraldGreen else LossRed
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.25f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    imageVector = if (isApproved) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = statusColor,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = tx.type + " [${tx.status}]",
+                                    color = statusColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = "$${String.format("%.2f", tx.totalAmount)}",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Client User: @${tx.username}", color = SilverGray, fontSize = 10.sp)
+                            val dateStr = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(tx.timestamp))
+                            Text("Logged: $dateStr", color = DarkGreyText, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        }
+
+                        Text("Destination Info: ${tx.planName}", color = DarkGreyText, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun AdminPlatformSettingsTab(
+    viewModel: InvestmentViewModel
+) {
+    var depRateStr by remember { mutableStateOf(viewModel.getAdminNairaRate().toInt().toString()) }
+    var wthRateStr by remember { mutableStateOf(viewModel.getAdminWithdrawalNairaRate().toInt().toString()) }
+    var bankName by remember { mutableStateOf(viewModel.getAdminBankName()) }
+    var actNumber by remember { mutableStateOf(viewModel.getAdminBankAccountNumber()) }
+    var actName by remember { mutableStateOf(viewModel.getAdminBankAccountName()) }
+
+    var feedbackMsg by remember { mutableStateOf("") }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "CONVERSION EXCHANGE FEES & RATE CONFIG",
+                        color = GoldAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        "Set exchange rates for client bank operations. Depositing naira is modeled strictly in reference to these parameters.",
+                        color = DarkGreyText,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = depRateStr,
+                            onValueChange = { depRateStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Deposit Rate (₦/$)", fontSize = 10.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GoldAccent,
+                                unfocusedTextColor = Color.White,
+                                focusedTextColor = Color.White
+                            )
+                        )
+
+                        OutlinedTextField(
+                            value = wthRateStr,
+                            onValueChange = { wthRateStr = it.filter { c -> c.isDigit() } },
+                            label = { Text("Withdraw Rate (₦/$)", fontSize = 10.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GoldAccent,
+                                unfocusedTextColor = Color.White,
+                                focusedTextColor = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "SYSTEM DESTINATION WIRE PARAMETERS",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        "Incoming wire transfers will specify these credentials to users. Make sure account information is valid.",
+                        color = DarkGreyText,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
+
+                    OutlinedTextField(
+                        value = bankName,
+                        onValueChange = { bankName = it },
+                        label = { Text("Gateway Bank Outlet Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = actName,
+                        onValueChange = { actName = it },
+                        label = { Text("Admin Account Full Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = actNumber,
+                        onValueChange = { actNumber = it },
+                        label = { Text("Admin Account Number") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                border = BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "ROI DAILY DISTRIBUTIONS (platform settings / daily drops)",
+                        color = EmeraldGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        "Click the distribute button below to run the daily percentage payouts. Each user with an active investment will immediately receive their daily percentage added directly to their wallet balance.",
+                        color = DarkGreyText,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.distributeUserRoiManually()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = DeepObsidian)
+                            Text("DISTRIBUTE ROI (DAILY DROP)", color = DeepObsidian, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (feedbackMsg.isNotBlank()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.12f)),
+                    border = BorderStroke(1.dp, EmeraldGreen.copy(alpha=0.4f))
+                ) {
+                    Text(
+                        text = feedbackMsg,
+                        color = EmeraldGreen,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(10.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = {
+                    val dep = depRateStr.toDoubleOrNull() ?: 1500.0
+                    val wth = wthRateStr.toDoubleOrNull() ?: 1500.0
+                    viewModel.saveAdminPlatformSettings(
+                        depositRate = dep,
+                        withdrawalRate = wth,
+                        bankName = bankName,
+                        accountNumber = actNumber,
+                        accountName = actName
+                    )
+                    feedbackMsg = "System financial metrics successfully committed!"
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = GoldAccent),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("COMMIT SYSTEM UPDATES", color = DeepObsidian, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
 @Composable
 fun AdminClientsDirectoryTab(users: List<User>) {
     var searchQuery by remember { mutableStateOf("") }
@@ -3783,6 +5332,211 @@ fun AdminYieldCreatorTab(
 
                     IconButton(onClick = { viewModel.deleteAdminPlan(plan.id) }) {
                         Icon(imageVector = Icons.Default.Delete, contentDescription = "Remove Plan", tint = LossRed)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 8a. User Active & Historic Investment Plans Maturity Screen
+// ==========================================
+@Composable
+fun MyPlansScreen(
+    viewModel: InvestmentViewModel
+) {
+    val holdings by viewModel.userHoldings.collectAsState()
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = DeepObsidian,
+        topBar = {
+            @OptIn(ExperimentalMaterial3Api::class)
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "MY SYSTEM PLAN CONTRACTS",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSlateCard)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(DeepObsidian)
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "ACTIVE CONTRACTS & MATURITY LOGS (${holdings.size})",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (holdings.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = DarkGreyText,
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No quant contracts found in your active directory.",
+                        color = DarkGreyText,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Deploy high-yield dynamic structures in the Market page.",
+                        color = DarkGreyText,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                ) {
+                    items(holdings) { hold ->
+                        val isExpired = hold.daysElapsed >= hold.durationDays
+                        val progress = if (hold.durationDays > 0) hold.daysElapsed.toFloat() / hold.durationDays.toFloat() else 1f
+                        val progressClamped = progress.coerceIn(0f, 1f)
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                            border = BorderStroke(1.dp, if (isExpired) BorderColor else EmeraldGreen.copy(alpha = 0.35f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = hold.planName,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Principal deployed: $${String.format("%.2f", hold.amount)}",
+                                            color = DarkGreyText,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (isExpired) BorderColor.copy(alpha = 0.2f) else EmeraldGreen.copy(alpha = 0.15f))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = if (isExpired) "MATURED / REDEEMED" else "ACTIVE RUNNING",
+                                            color = if (isExpired) DarkGreyText else EmeraldGreen,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(text = "Contract Term Maturation", color = DarkGreyText, fontSize = 10.sp)
+                                        Text(
+                                            text = "Term: Day ${hold.daysElapsed} of ${hold.durationDays}",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = progressClamped,
+                                        color = if (isExpired) BorderColor else EmeraldGreen,
+                                        trackColor = BorderColor.copy(alpha = 0.38f),
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(text = "Collected Yield dividends", color = DarkGreyText, fontSize = 10.sp)
+                                        Text(
+                                            text = "$${String.format("%.2f", hold.totalClaimed)}",
+                                            color = GoldAccent,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+
+                                    if (!isExpired) {
+                                        val singlePayout = hold.amount * (hold.dailyPercentage / 100.0)
+                                        Button(
+                                            onClick = { viewModel.collectRoi(hold.id) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "CLAIM DAILY (+$${String.format("%.2f", singlePayout)})",
+                                                color = DeepObsidian,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = { viewModel.collectRoi(hold.id) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = BorderColor.copy(alpha = 0.5f)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "REDEEM PRINCIPAL",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

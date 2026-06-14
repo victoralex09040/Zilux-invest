@@ -64,33 +64,26 @@ class SupabaseClient {
         val cleanUrl = url.trim().removeSuffix("/")
         val jsonValue = backupAdapter.toJson(backup)
         val row = SupabaseRow(key = "user_$username", value = jsonValue)
-        val requestBody = rowAdapter.toJson(row).toRequestBody("application/json".toMediaType())
+        val rowsList = listOf(row)
+        val requestBody = rowListAdapter.toJson(rowsList).toRequestBody("application/json".toMediaType())
 
-        val exists = checkRowExists(cleanUrl, key, "user_$username")
-        val request = if (exists) {
-            Request.Builder()
-                .url("$cleanUrl/rest/v1/$TABLE_NAME?key=eq.user_$username")
-                .addHeader("apikey", key.trim())
-                .addHeader("Authorization", "Bearer ${key.trim()}")
-                .addHeader("Content-Type", "application/json")
-                .patch(requestBody)
-                .build()
-        } else {
-            Request.Builder()
-                .url("$cleanUrl/rest/v1/$TABLE_NAME")
-                .addHeader("apikey", key.trim())
-                .addHeader("Authorization", "Bearer ${key.trim()}")
-                .addHeader("Content-Type", "application/json")
-                .post(requestBody)
-                .build()
-        }
+        val request = Request.Builder()
+            .url("$cleanUrl/rest/v1/$TABLE_NAME?on_conflict=key")
+            .addHeader("apikey", key.trim())
+            .addHeader("Authorization", "Bearer ${key.trim()}")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Prefer", "resolution=merge-duplicates")
+            .post(requestBody)
+            .build()
 
         try {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful || response.code == 201 || response.code == 204) {
                     Result.success(Unit)
                 } else {
-                    Result.failure(Exception("Failed to save cloud backup (HTTP ${response.code}): ${response.message}"))
+                    val errBody = response.body?.string() ?: ""
+                    val errMsg = if (errBody.isNotBlank()) errBody else response.message
+                    Result.failure(Exception("Failed to save cloud backup (HTTP ${response.code}): $errMsg"))
                 }
             }
         } catch (e: Exception) {
