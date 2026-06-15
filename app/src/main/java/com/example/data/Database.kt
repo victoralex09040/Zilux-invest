@@ -22,7 +22,9 @@ data class User(
     val referredBy: String? = null,
     val referredCount: Int = 0,
     val lastSpinTime: Long = 0L,
-    val age: Int = 0
+    val age: Int = 0,
+    val lastArrivalClaimTime: Long = 0L,
+    val arrivalStreak: Int = 0
 )
 
 @Entity(tableName = "investment_plans")
@@ -95,6 +97,9 @@ interface UserDao {
 
     @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
     suspend fun getUserByEmailOneShot(email: String): User?
+
+    @Query("SELECT * FROM users WHERE referralCode = :referralCode LIMIT 1")
+    suspend fun getUserByReferralCode(referralCode: String): User?
 
     @Query("SELECT * FROM users")
     fun getAllUsers(): Flow<List<User>>
@@ -211,7 +216,7 @@ interface TransactionDao {
         PortfolioHistory::class,
         InvestmentTransaction::class
     ],
-    version = 6, // Upgraded database version to 6 for age field in user profile
+    version = 7, // Upgraded database version to 7 for lastArrivalClaimTime & arrivalStreak fields
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

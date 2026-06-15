@@ -325,7 +325,7 @@ class InvestmentRepository(private val db: AppDatabase) {
         return Result.success(Unit)
     }
 
-    suspend fun distributeRoiToAllActivePlans(isAuto: Boolean): Result<String> {
+    suspend fun distributeRoiToAllActivePlans(isAuto: Boolean): Result<Pair<String, List<String>>> {
         val allHoldings = investmentDao.getAllHoldingsOneShot()
         if (allHoldings.isEmpty()) {
             return Result.failure(Exception("No active plan investments found on the server."))
@@ -334,6 +334,7 @@ class InvestmentRepository(private val db: AppDatabase) {
         val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         var distributedCount = 0
         var totalAmountPaid = 0.0
+        val uniqueUsernamesAffected = mutableSetOf<String>()
 
         for (holding in allHoldings) {
             if (holding.daysElapsed >= holding.durationDays) {
@@ -377,16 +378,17 @@ class InvestmentRepository(private val db: AppDatabase) {
 
             distributedCount++
             totalAmountPaid += dailyPayout
+            uniqueUsernamesAffected.add(holding.username)
         }
 
         if (distributedCount == 0) {
-            return Result.success("All active plans are already up to date. No new ROI distributions were needed for today ($todayDate).")
+            return Result.success(Pair("All active plans are already up to date. No new ROI distributions were needed for today ($todayDate).", emptyList()))
         }
 
         val typeLabel = if (isAuto) "AUTOMATIC" else "MANUAL"
         val message = "Executed $typeLabel ROI payout: $distributedCount plans processed. Paid $${String.format("%.2f", totalAmountPaid)} total."
         
-        return Result.success(message)
+        return Result.success(Pair(message, uniqueUsernamesAffected.toList()))
     }
 
     // --- Deposit & Withdrawal Real Logic ---
@@ -463,11 +465,13 @@ class InvestmentRepository(private val db: AppDatabase) {
     // --- Admin Platform Queries and Processing Commands ---
     fun observeAllUsers(): Flow<List<User>> = userDao.getAllUsers()
 
+    fun observeAllHoldings(): Flow<List<UserInvestment>> = investmentDao.observeAllHoldings()
+
     fun observeAllTransactions(): Flow<List<InvestmentTransaction>> = transactionDao.getAllTransactions()
 
     fun observePendingTransactions(): Flow<List<InvestmentTransaction>> = transactionDao.getAllPendingTransactions()
 
-    suspend fun approveTransaction(id: Int): Result<Unit> {
+    suspend fun approveTransaction(id: Int, level1Pct: Double = 15.0, level2Pct: Double = 3.0): Result<String> {
         val tx = transactionDao.getTransactionById(id) ?: return Result.failure(Exception("Transaction not found."))
         if (tx.status != "PENDING") {
             return Result.failure(Exception("Transaction is already processed ($${tx.status})."))
@@ -480,6 +484,50 @@ class InvestmentRepository(private val db: AppDatabase) {
             userDao.updateUser(user.copy(cashBalance = newBalance))
             transactionDao.updateTransaction(tx.copy(status = "APPROVED"))
             logCurrentPortfolioHistory(tx.username, newBalance)
+
+            // --- MULTI-LEVEL REFERRAL SYSTEM COMMISSION CREDITING ---
+            if (!user.referredBy.isNullOrBlank()) {
+                val referrer1 = userDao.getUserByReferralCode(user.referredBy)
+                if (referrer1 != null) {
+                    val commission1 = tx.totalAmount * (level1Pct / 100.0)
+                    if (commission1 > 0.0) {
+                        val ref1NewBalance = referrer1.cashBalance + commission1
+                        userDao.updateUser(referrer1.copy(cashBalance = ref1NewBalance))
+                        transactionDao.insertTransaction(
+                            InvestmentTransaction(
+                                username = referrer1.username,
+                                type = "REFERRAL_BONUS",
+                                totalAmount = commission1,
+                                planName = "Direct Ref Commission for ${user.username}'s deposit",
+                                status = "APPROVED"
+                            )
+                        )
+                        logCurrentPortfolioHistory(referrer1.username, ref1NewBalance)
+                    }
+
+                    // Level 2 (Indirect) Referrer
+                    if (!referrer1.referredBy.isNullOrBlank()) {
+                        val referrer2 = userDao.getUserByReferralCode(referrer1.referredBy)
+                        if (referrer2 != null) {
+                            val commission2 = tx.totalAmount * (level2Pct / 100.0)
+                            if (commission2 > 0.0) {
+                                val ref2NewBalance = referrer2.cashBalance + commission2
+                                userDao.updateUser(referrer2.copy(cashBalance = ref2NewBalance))
+                                transactionDao.insertTransaction(
+                                    InvestmentTransaction(
+                                        username = referrer2.username,
+                                        type = "REFERRAL_BONUS",
+                                        totalAmount = commission2,
+                                        planName = "Indirect Ref Commission for ${user.username}'s deposit",
+                                        status = "APPROVED"
+                                    )
+                                )
+                                logCurrentPortfolioHistory(referrer2.username, ref2NewBalance)
+                            }
+                        }
+                    }
+                }
+            }
         } else if (tx.type == "WITHDRAWAL") {
             // Balance was already deducted when withdrawal was requested to lock funds, so we just approve transaction status!
             transactionDao.updateTransaction(tx.copy(status = "APPROVED"))
@@ -487,10 +535,10 @@ class InvestmentRepository(private val db: AppDatabase) {
             transactionDao.updateTransaction(tx.copy(status = "APPROVED"))
         }
 
-        return Result.success(Unit)
+        return Result.success(tx.username)
     }
 
-    suspend fun rejectTransaction(id: Int): Result<Unit> {
+    suspend fun rejectTransaction(id: Int): Result<String> {
         val tx = transactionDao.getTransactionById(id) ?: return Result.failure(Exception("Transaction not found."))
         if (tx.status != "PENDING") {
             return Result.failure(Exception("Transaction is already processed ($${tx.status})."))
@@ -511,7 +559,7 @@ class InvestmentRepository(private val db: AppDatabase) {
             transactionDao.updateTransaction(tx.copy(status = "REJECTED"))
         }
 
-        return Result.success(Unit)
+        return Result.success(tx.username)
     }
 
     // --- Save Security Configurations ---
@@ -551,11 +599,10 @@ class InvestmentRepository(private val db: AppDatabase) {
     }
 
     // --- Lucky Spin Wheel Stuff ---
-    suspend fun playLuckySpin(username: String): Result<Double> {
+    suspend fun playLuckySpin(username: String, cost: Double): Result<Double> {
         val user = userDao.getUserOneShot(username) ?: return Result.failure(Exception("User not found."))
-        val cost = 20.00
         if (user.cashBalance < cost) {
-            return Result.failure(Exception("Insufficient balance. Spinning the wheel costs $20.00."))
+            return Result.failure(Exception("Insufficient balance. Spinning the wheel costs $${String.format("%.2f", cost)}."))
         }
 
         // Weighted lucky prize pools
@@ -706,5 +753,66 @@ class InvestmentRepository(private val db: AppDatabase) {
         for (h in backup.portfolioHistory) {
             historyDao.insertHistory(h)
         }
+    }
+
+    suspend fun claimArrivalBonus(username: String, bonusAmounts: List<Double>): Result<Pair<Double, Int>> {
+        val user = userDao.getUserOneShot(username) ?: return Result.failure(Exception("User not found."))
+        
+        val currentTime = System.currentTimeMillis()
+        val lastClaim = user.lastArrivalClaimTime
+        
+        var nextStreak = 1
+        var canClaim = false
+        
+        if (lastClaim == 0L) {
+            nextStreak = 1
+            canClaim = true
+        } else {
+            val msDiff = currentTime - lastClaim
+            val hoursDiff = msDiff / (1000.0 * 3600.0)
+            
+            if (hoursDiff < 24.0) {
+                return Result.failure(Exception("Already claimed today. Please try again after 24 hours."))
+            } else if (hoursDiff >= 24.0 && hoursDiff < 48.0) {
+                nextStreak = (user.arrivalStreak % 7) + 1
+                canClaim = true
+            } else {
+                nextStreak = 1
+                canClaim = true
+            }
+        }
+        
+        if (!canClaim) {
+            return Result.failure(Exception("Cannot claim daily arrival bonus at this time."))
+        }
+        
+        val awardAmount = when (nextStreak) {
+            in 1..7 -> bonusAmounts[nextStreak - 1]
+            else -> bonusAmounts[0]
+        }
+        
+        val updatedUser = user.copy(
+            cashBalance = user.cashBalance + awardAmount,
+            lastArrivalClaimTime = currentTime,
+            arrivalStreak = nextStreak
+        )
+        
+        userDao.updateUser(updatedUser)
+        
+        transactionDao.insertTransaction(
+            InvestmentTransaction(
+                username = username,
+                planId = "ARRIVAL_DAY_$nextStreak",
+                planName = "Daily Arrival Claim Day $nextStreak",
+                type = "TASK_REWARD",
+                totalAmount = awardAmount,
+                status = "APPROVED",
+                timestamp = currentTime
+            )
+        )
+        
+        logCurrentPortfolioHistory(username, updatedUser.cashBalance)
+        
+        return Result.success(Pair(awardAmount, nextStreak))
     }
 }

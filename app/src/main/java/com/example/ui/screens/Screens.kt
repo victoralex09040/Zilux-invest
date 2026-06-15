@@ -353,107 +353,6 @@ fun LoginScreen(
                             .testTag("go_signup_btn")
                     )
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = BorderColor)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                var showCloudConfig by remember { mutableStateOf(false) }
-                val isSynced = viewModel.getSupabaseUrl().isNotBlank()
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showCloudConfig = !showCloudConfig }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isSynced) Icons.Default.CheckCircle else Icons.Default.Info,
-                            contentDescription = null,
-                            tint = if (isSynced) EmeraldGreen else DarkGreyText,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isSynced) "Cloud Database Active" else "Cloud Database Inactive",
-                            color = if (isSynced) EmeraldGreen else DarkGreyText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = if (showCloudConfig) "Hide Gateway" else "Configure Gateway",
-                        color = EmeraldGreen,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                if (showCloudConfig) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var cloudUrl by remember { mutableStateOf(viewModel.getSupabaseUrl()) }
-                    var cloudKey by remember { mutableStateOf(viewModel.getSupabaseKey()) }
-
-                    OutlinedTextField(
-                        value = cloudUrl,
-                        onValueChange = { cloudUrl = it.trim() },
-                        label = { Text("Supabase URL", fontSize = 11.sp) },
-                        placeholder = { Text("https://your-project.supabase.co") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderColor,
-                            focusedLabelColor = EmeraldGreen,
-                            unfocusedLabelColor = DarkGreyText
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = cloudKey,
-                        onValueChange = { cloudKey = it.trim() },
-                        label = { Text("Supabase API Key", fontSize = 11.sp) },
-                        placeholder = { Text("eyJhbGci...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EmeraldGreen,
-                            unfocusedBorderColor = BorderColor,
-                            focusedLabelColor = EmeraldGreen,
-                            unfocusedLabelColor = DarkGreyText
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { viewModel.testSupabaseAndSync(cloudUrl, cloudKey) },
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("SAVE & CONNECT", color = DeepObsidian, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        }
-                        if (isSynced) {
-                            Button(
-                                onClick = {
-                                    viewModel.disconnectSupabase()
-                                    cloudUrl = ""
-                                    cloudKey = ""
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = LossRed),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("WIPE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -1220,6 +1119,11 @@ fun DashboardScreen(
                     }
                 }
 
+                // Interactive Daily Arrival Bonus Card
+                item {
+                    DailyArrivalBonusCard(user = activeUser, viewModel = viewModel)
+                }
+
                 // Realtime portfolio history canvas curve chart
                 item {
                     if (historyOfPortfolio.isNotEmpty()) {
@@ -1369,6 +1273,240 @@ fun DashboardScreen(
                 // Let's make sure we do this, it is perfect!
             }
         )
+    }
+}
+
+@Composable
+fun DailyArrivalBonusCard(
+    user: com.example.data.User?,
+    viewModel: InvestmentViewModel
+) {
+    if (user == null) return
+
+    val currentTime = System.currentTimeMillis()
+    val lastClaim = user.lastArrivalClaimTime
+    val streakDay = user.arrivalStreak
+
+    // Fetch dynamic bonus settings
+    val bonusList = viewModel.getDailyDropBonusList()
+    val isSystemEnabled = viewModel.isDailyDropEnabled()
+
+    // Calculate initial status
+    var timeRemainingText by remember(lastClaim, isSystemEnabled) { mutableStateOf("") }
+    var buttonEnabled by remember(lastClaim, isSystemEnabled) { mutableStateOf(false) }
+    var streakStatusLabel by remember(lastClaim, isSystemEnabled) { mutableStateOf("") }
+    var alertLabel by remember(lastClaim, isSystemEnabled) { mutableStateOf("") }
+
+    LaunchedEffect(lastClaim, isSystemEnabled) {
+        if (!isSystemEnabled) {
+            timeRemainingText = "System Offline (Maintenance)"
+            buttonEnabled = false
+            streakStatusLabel = "Daily Drops Disabled"
+            alertLabel = "Locked by Administrator"
+        } else {
+            while (true) {
+                val now = System.currentTimeMillis()
+                if (lastClaim == 0L) {
+                    timeRemainingText = "Ready to claim instantly!"
+                    buttonEnabled = true
+                    streakStatusLabel = "Streak: Day 1 (Pending Check-in)"
+                    alertLabel = "Claim Day 1 bonus: $${String.format("%.2f", bonusList.getOrElse(0) { 1.00 })}"
+                } else {
+                    val msDiff = now - lastClaim
+                    val hoursDiff = msDiff / (1000.0 * 3600.0)
+
+                    if (hoursDiff < 24.0) {
+                        val msLeft = (24.0 * 3600.0 * 1000.0) - msDiff
+                        val hrs = (msLeft / (3600.0 * 1000.0)).toInt()
+                        val mins = ((msLeft % (3600.0 * 1000.0)) / (60.0 * 1000.0)).toInt()
+                        val secs = (((msLeft % (1000.0 * 60.0 * 60.0)) % (60.0 * 1000.0)) / 1000.0).toInt()
+                        timeRemainingText = String.format("Next claim unlocks in: %02d:%02d:%02d", hrs, mins, secs)
+                        buttonEnabled = false
+                        streakStatusLabel = "Streak: Day $streakDay (Claimed)"
+                        alertLabel = "Already claimed for today"
+                    } else if (hoursDiff >= 24.0 && hoursDiff < 48.0) {
+                        val nextStreak = (streakDay % 7) + 1
+                        val award = bonusList.getOrElse(nextStreak - 1) { 1.00 }
+                        timeRemainingText = "Ready to claim Day $nextStreak!"
+                        buttonEnabled = true
+                        streakStatusLabel = "Streak: Day $streakDay -> Day $nextStreak"
+                        alertLabel = "Claim Day $nextStreak bonus: $${String.format("%.2f", award)}"
+                    } else {
+                        timeRemainingText = "Window missed! Start over."
+                        buttonEnabled = true
+                        streakStatusLabel = "Streak expired (missed check-in)"
+                        alertLabel = "Claim Day 1 bonus: $${String.format("%.2f", bonusList.getOrElse(0) { 1.00 })}"
+                    }
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    val brush = Brush.linearGradient(
+        colors = listOf(GoldAccent.copy(alpha = 0.4f), Color(0xFFE5A93B).copy(alpha = 0.1f))
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("daily_arrival_bonus_card"),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+        border = BorderStroke(1.2.dp, brush)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = "Daily Arrival",
+                        tint = GoldAccent,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "DAILY ARRIVAL BONUS",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = streakStatusLabel,
+                            color = GoldAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+
+                // Small badge for status
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (buttonEnabled) EmeraldGreen.copy(alpha = 0.2f) else DarkGreyText.copy(alpha = 0.2f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (buttonEnabled) "AVAIL" else "LOCKED",
+                        color = if (buttonEnabled) EmeraldGreen else DarkGreyText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Calendar strip for visualization of 7 days
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                for (day in 1..7) {
+                    val isCurrentOrPast = if (lastClaim == 0L) false else {
+                        val hours = (System.currentTimeMillis() - lastClaim) / (1000.0 * 3600.0)
+                        if (hours >= 48.0) false // reset
+                        else {
+                            if (day <= streakDay) true
+                            else false
+                        }
+                    }
+                    val isNextToClaim = if (lastClaim == 0L) day == 1 else {
+                        val hours = (System.currentTimeMillis() - lastClaim) / (1000.0 * 3600.0)
+                        if (hours >= 48.0) day == 1
+                        else if (hours >= 24.0) day == (streakDay % 7) + 1
+                        else false
+                    }
+
+                    val circleBg = when {
+                        isCurrentOrPast -> EmeraldGreen
+                        isNextToClaim -> GoldAccent
+                        else -> DeepObsidian
+                    }
+                    val textColor = when {
+                        isCurrentOrPast || isNextToClaim -> DeepObsidian
+                        else -> SilverGray
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(circleBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "D$day",
+                                color = textColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val bonusVal = bonusList.getOrElse(day - 1) { 1.00 }
+                        val bonusText = if (bonusVal % 1.0 == 0.0) "$${bonusVal.toInt()}" else "$$bonusVal"
+                        Text(
+                            text = bonusText,
+                            color = if (isCurrentOrPast) EmeraldGreen else if (isNextToClaim) GoldAccent else DarkGreyText,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = timeRemainingText,
+                    color = if (buttonEnabled) GoldAccent else SilverGray,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace
+                )
+
+                Button(
+                    onClick = { viewModel.claimArrivalBonus() },
+                    enabled = buttonEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = GoldAccent,
+                        disabledContainerColor = DeepObsidian,
+                        contentColor = DeepObsidian,
+                        disabledContentColor = DarkGreyText
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("claim_arrival_bonus_button")
+                ) {
+                    Text(
+                        text = if (buttonEnabled) "CLAIM" else "CLAIMED",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1789,16 +1927,16 @@ fun YieldInvestmentsSubTab(
                                 )
                             }
 
-                            Button(
-                                onClick = { viewModel.collectRoi(hold.id) },
-                                modifier = Modifier.height(34.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                                shape = RoundedCornerShape(6.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(EmeraldGreen.copy(alpha = 0.15f))
+                                    .border(1.dp, EmeraldGreen.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = "CLAIM TODAY ROI (+${String.format("%.2f", hold.amount * (hold.dailyPercentage / 100.0))})",
-                                    color = DeepObsidian,
+                                    text = "ADMIN DISTRIBUTED",
+                                    color = EmeraldGreen,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -3278,11 +3416,6 @@ fun SettingsSecuritySubTab(
     var newPass by remember { mutableStateOf("") }
     var confirmNewPass by remember { mutableStateOf("") }
 
-    var settingsSupabaseUrl by remember { mutableStateOf(viewModel.getSupabaseUrl()) }
-    var settingsSupabaseKey by remember { mutableStateOf(viewModel.getSupabaseKey()) }
-    val isSupabaseActiveSet = viewModel.getSupabaseUrl().isNotBlank()
-    var showSqlInstructions by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -3642,159 +3775,6 @@ fun SettingsSecuritySubTab(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(text = "COMMIT CREDENTIAL REWRITE", color = DeepObsidian, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Section 5: Supabase Cloud Sync Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = "SUPABASE CLOUD SYNC GATEWAY",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-                Text(
-                    text = "Backup balance, stakes, and ledger transaction database rows continuously to a custom PostgreSQL remote cloud node.",
-                    color = DarkGreyText,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp
-                )
-
-                Button(
-                    onClick = { showSqlInstructions = !showSqlInstructions },
-                    colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (showSqlInstructions) "HIDE SQL SETUP TEMPLATE" else "SHOW SQL SETUP TEMPLATE",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                if (showSqlInstructions) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = DeepObsidian),
-                        border = BorderStroke(1.dp, BorderColor)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text(
-                                text = "Run this script inside your Supabase Project SQL Editor to build tables:",
-                                color = Color.LightGray,
-                                fontSize = 9.sp,
-                                lineHeight = 12.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            androidx.compose.foundation.text.selection.SelectionContainer {
-                                Text(
-                                    text = """
-                                        CREATE TABLE IF NOT EXISTS zelox_cloud_sync (
-                                          key TEXT PRIMARY KEY,
-                                          value TEXT NOT NULL
-                                        );
-                                        ALTER TABLE zelox_cloud_sync ENABLE ROW LEVEL SECURITY;
-                                        CREATE POLICY "Allow select on sync" ON zelox_cloud_sync FOR SELECT USING (true);
-                                        CREATE POLICY "Allow insert on sync" ON zelox_cloud_sync FOR INSERT WITH CHECK (true);
-                                        CREATE POLICY "Allow update on sync" ON zelox_cloud_sync FOR UPDATE USING (true) WITH CHECK (true);
-                                    """.trimIndent(),
-                                    color = GoldAccent,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 9.sp,
-                                    lineHeight = 12.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = settingsSupabaseUrl,
-                    onValueChange = { settingsSupabaseUrl = it.trim() },
-                    label = { Text("Supabase Endpoint API URL", fontSize = 11.sp) },
-                    placeholder = { Text("https://your-proj.supabase.co") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = GoldAccent,
-                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
-                        focusedLabelColor = GoldAccent,
-                        unfocusedTextColor = Color.White,
-                        focusedTextColor = Color.White
-                    )
-                )
-
-                OutlinedTextField(
-                    value = settingsSupabaseKey,
-                    onValueChange = { settingsSupabaseKey = it.trim() },
-                    label = { Text("Supabase Public Anon Key", fontSize = 11.sp) },
-                    placeholder = { Text("public-anon-key-string...") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = GoldAccent,
-                        unfocusedBorderColor = BorderColor.copy(alpha = 0.6f),
-                        focusedLabelColor = GoldAccent,
-                        unfocusedTextColor = Color.White,
-                        focusedTextColor = Color.White
-                    )
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { viewModel.testSupabaseAndSync(settingsSupabaseUrl, settingsSupabaseKey) },
-                        colors = ButtonDefaults.buttonColors(containerColor = GoldAccent),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(text = "CONNECT & SYNC", color = DeepObsidian, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                    if (isSupabaseActiveSet) {
-                        Button(
-                            onClick = { viewModel.syncCurrentUserDataToCloud() },
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = "FORCE BACKUP", color = DeepObsidian, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Button(
-                            onClick = {
-                                viewModel.disconnectSupabase()
-                                settingsSupabaseUrl = ""
-                                settingsSupabaseKey = ""
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = LossRed),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(0.9f)
-                        ) {
-                            Text(text = "DISCONNECT", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
             }
         }
@@ -4262,7 +4242,7 @@ fun AdminPanelScreen(
     val plans by viewModel.allPlans.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("DEPOSITS", "WITHDRAWALS", "CLIENT DIRECTORY", "YIELD CREATOR", "PLATFORM SETTINGS")
+    val tabs = listOf("DEPOSITS", "WITHDRAWALS", "CLIENT DIRECTORY", "YIELD CREATOR", "ROI DEPLOYMENT", "SETTINGS", "DAILY DROP")
 
     // Stats variables
     val totalUsers = users.size
@@ -4371,7 +4351,9 @@ fun AdminPanelScreen(
                     1 -> AdminWithdrawalsTab(viewModel = viewModel)
                     2 -> AdminClientsDirectoryTab(users = users)
                     3 -> AdminYieldCreatorTab(plans = plans, viewModel = viewModel)
-                    4 -> AdminPlatformSettingsTab(viewModel = viewModel)
+                    4 -> AdminRoiDeploymentTab(viewModel = viewModel)
+                    5 -> AdminSettingsTabReplicated(viewModel = viewModel)
+                    6 -> AdminDailyDropTab(viewModel = viewModel)
                 }
             }
         }
@@ -4879,6 +4861,378 @@ fun AdminWithdrawalsTab(
 }
 
 @Composable
+fun AdminRoiDeploymentTab(
+    viewModel: InvestmentViewModel
+) {
+    val holdings by viewModel.allGlobalHoldings.collectAsState()
+    val distributionHistory by viewModel.distributionHistory.collectAsState()
+
+    val todayDate = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+
+    // Math calculations
+    val activePlansCount = holdings.count { it.daysElapsed < it.durationDays }
+    val totalDailyPotential = holdings.filter { it.daysElapsed < it.durationDays }.sumOf { it.amount * (it.dailyPercentage / 100.0) }
+    val remainingToPayToday = holdings.filter { it.daysElapsed < it.durationDays && it.lastDistributedDate != todayDate }.sumOf { it.amount * (it.dailyPercentage / 100.0) }
+    val pendingDeploymentCount = holdings.count { it.daysElapsed < it.durationDays && it.lastDistributedDate != todayDate }
+
+    // Auto states
+    var autoEnabled by remember { mutableStateOf(viewModel.isAutoRoiEnabled()) }
+    var autoTime by remember { mutableStateOf(viewModel.getAutoRoiTime()) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = 24.dp)
+    ) {
+        // Core Control Hub Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "ROI DISPATCH ACTION CENTER",
+                        color = GoldAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Pending Today payouts", color = DarkGreyText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "$pendingDeploymentCount contracts",
+                                color = if (pendingDeploymentCount > 0) GoldAccent else Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Est. Remaining Payout", color = DarkGreyText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "$${String.format("%.2f", remainingToPayToday)}",
+                                color = if (remainingToPayToday > 0.0) EmeraldGreen else Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // Stats Breakdown
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Active Contracts", color = DarkGreyText, fontSize = 9.sp)
+                            Text("$activePlansCount contracts", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Full Daily Potential Total", color = DarkGreyText, fontSize = 9.sp)
+                            Text("$${String.format("%.2f", totalDailyPotential)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Button(
+                        onClick = { viewModel.distributeUserRoiManually() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = DeepObsidian)
+                            Text("DEPLOY MANUAL ROI NOW", color = DeepObsidian, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto ROI Scheduler Configuration Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "AUTOMATED ROI DISPATCH ENGINE (BACKGROUND WORKER)",
+                        color = GoldAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "When active, the automated loop evaluates all running contracts every 15 seconds. If the scheduled time matches, ROI payouts execute completely automatically once per calendar day.",
+                        color = DarkGreyText,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Autonomous Deployer Status",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Switch(
+                            checked = autoEnabled,
+                            onCheckedChange = {
+                                autoEnabled = it
+                                viewModel.saveAutoRoiSettings(it, autoTime)
+                            },
+                            colors = androidx.compose.material3.SwitchDefaults.colors(
+                                checkedThumbColor = EmeraldGreen,
+                                checkedTrackColor = EmeraldGreen.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Scheduled Dispatch Time (24h)",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        
+                        OutlinedTextField(
+                            value = autoTime,
+                            onValueChange = {
+                                autoTime = it
+                                viewModel.saveAutoRoiSettings(autoEnabled, it)
+                            },
+                            placeholder = { Text("12:00") },
+                            modifier = Modifier.width(100.dp).height(50.dp),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GoldAccent,
+                                unfocusedBorderColor = BorderColor,
+                                unfocusedTextColor = Color.White,
+                                focusedTextColor = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Active Investments Table Card Header
+        item {
+            Text(
+                "ACTIVE INVESTMENT CONTRACTS STATUS",
+                color = GoldAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+            )
+        }
+
+        if (holdings.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Box(modifier = Modifier.padding(24.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("No active user contracts found in database.", color = DarkGreyText, fontSize = 11.sp)
+                    }
+                }
+            }
+        } else {
+            items(holdings) { hold ->
+                val isExpired = hold.daysElapsed >= hold.durationDays
+                val dailyPayout = hold.amount * (hold.dailyPercentage / 100.0)
+                val isDispatchedToday = hold.lastDistributedDate == todayDate
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = if (isExpired) DeepObsidian else DarkSlateCard),
+                    border = BorderStroke(1.dp, if (isExpired) BorderColor.copy(alpha = 0.3f) else BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Client: ${hold.username.uppercase()}",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            if (isExpired) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(BorderColor.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("FINISHED/MATURED", color = DarkGreyText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else if (isDispatchedToday) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(EmeraldGreen.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("DISPATCHED TODAY", color = EmeraldGreen, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(GoldAccent.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("DISPATCH PENDING", color = GoldAccent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Text(
+                            "${hold.planName} (${hold.durationDays} Days Tenure)",
+                            color = DarkGreyText,
+                            fontSize = 11.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Principal: $${String.format("%,.2f", hold.amount)}",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Daily ROI: +$${String.format("%.2f", dailyPayout)} (${hold.dailyPercentage}%)",
+                                color = EmeraldGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        // Progress representation
+                        val progressNormalized = if (hold.durationDays > 0) hold.daysElapsed.toFloat() / hold.durationDays.toFloat() else 1f
+                        val progressClamped = progressNormalized.coerceIn(0f, 1f)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Contract Progress",
+                                color = DarkGreyText,
+                                fontSize = 9.sp
+                            )
+                            Text(
+                                text = "Day ${hold.daysElapsed} / ${hold.durationDays} (${String.format("%.0f", progressClamped * 100)}%)",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        LinearProgressIndicator(
+                            progress = progressClamped,
+                            color = if (isExpired) BorderColor else EmeraldGreen,
+                            trackColor = BorderColor.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Terminal Log Terminal Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "DISPATCH ENGINE LOG TERMINAL",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp, max = 200.dp)
+                            .background(Color.Black)
+                            .border(1.dp, BorderColor)
+                            .padding(8.dp)
+                    ) {
+                        if (distributionHistory.isEmpty()) {
+                            Text(
+                                "No dispatch events logged. Execute manual deploy or enable auto dispatch.",
+                                color = Color.Green,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        } else {
+                            LazyColumn(reverseLayout = true) {
+                                items(distributionHistory) { log ->
+                                    Text(
+                                        text = log,
+                                        color = Color.Green,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun AdminPlatformSettingsTab(
     viewModel: InvestmentViewModel
 ) {
@@ -4887,6 +5241,10 @@ fun AdminPlatformSettingsTab(
     var bankName by remember { mutableStateOf(viewModel.getAdminBankName()) }
     var actNumber by remember { mutableStateOf(viewModel.getAdminBankAccountNumber()) }
     var actName by remember { mutableStateOf(viewModel.getAdminBankAccountName()) }
+
+    var settingsSupabaseUrl by remember { mutableStateOf(viewModel.getSupabaseUrl()) }
+    var settingsSupabaseKey by remember { mutableStateOf(viewModel.getSupabaseKey()) }
+    val isSupabaseActiveSet = viewModel.getSupabaseUrl().isNotBlank()
 
     var feedbackMsg by remember { mutableStateOf("") }
 
@@ -5018,39 +5376,61 @@ fun AdminPlatformSettingsTab(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = DeepObsidian),
-                border = BorderStroke(1.5.dp, EmeraldGreen.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, BorderColor)
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "ROI DAILY DISTRIBUTIONS (platform settings / daily drops)",
-                        color = EmeraldGreen,
+                        "DATABASE SYNC & SUPABASE ADAPTER",
+                        color = GoldAccent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        "Click the distribute button below to run the daily percentage payouts. Each user with an active investment will immediately receive their daily percentage added directly to their wallet balance.",
+                        "Database synchronization backs up user records (including balances, active plans, transactions) to Supabase Cloud on every transaction or deposit.",
                         color = DarkGreyText,
                         fontSize = 10.sp,
                         lineHeight = 14.sp
                     )
 
-                    Button(
-                        onClick = {
-                            viewModel.distributeUserRoiManually()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    OutlinedTextField(
+                        value = settingsSupabaseUrl,
+                        onValueChange = { settingsSupabaseUrl = it.trim() },
+                        label = { Text("Supabase Endpoint API URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = settingsSupabaseKey,
+                        onValueChange = { settingsSupabaseKey = it.trim() },
+                        label = { Text("Supabase Public Anon Key") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GoldAccent,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        )
+                    )
+
+                    if (isSupabaseActiveSet) {
+                        Button(
+                            onClick = {
+                                viewModel.disconnectSupabase()
+                                settingsSupabaseUrl = ""
+                                settingsSupabaseKey = ""
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = DeepObsidian)
-                            Text("DISTRIBUTE ROI (DAILY DROP)", color = DeepObsidian, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            Text("WIPE & DISCONNECT CLOUD DATABASESYNC", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -5087,6 +5467,9 @@ fun AdminPlatformSettingsTab(
                         accountNumber = actNumber,
                         accountName = actName
                     )
+                    if (settingsSupabaseUrl.isNotBlank() && settingsSupabaseKey.isNotBlank()) {
+                        viewModel.saveSupabaseCredentials(settingsSupabaseUrl, settingsSupabaseKey)
+                    }
                     feedbackMsg = "System financial metrics successfully committed!"
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -5505,30 +5888,31 @@ fun MyPlansScreen(
                                     }
 
                                     if (!isExpired) {
-                                        val singlePayout = hold.amount * (hold.dailyPercentage / 100.0)
-                                        Button(
-                                            onClick = { viewModel.collectRoi(hold.id) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(EmeraldGreen.copy(alpha = 0.15f))
+                                                .border(1.dp, EmeraldGreen.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
                                         ) {
                                             Text(
-                                                text = "CLAIM DAILY (+$${String.format("%.2f", singlePayout)})",
-                                                color = DeepObsidian,
+                                                text = "AUTO ADMIN MANAGED",
+                                                color = EmeraldGreen,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
                                     } else {
-                                        Button(
-                                            onClick = { viewModel.collectRoi(hold.id) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = BorderColor.copy(alpha = 0.5f)),
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White.copy(alpha = 0.1f))
+                                                .border(1.dp, BorderColor.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
                                         ) {
                                             Text(
-                                                text = "REDEEM PRINCIPAL",
-                                                color = Color.White,
+                                                text = "MATURED / FINISHED",
+                                                color = DarkGreyText,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -5538,6 +5922,935 @@ fun MyPlansScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminSettingsTabReplicated(
+    viewModel: InvestmentViewModel
+) {
+    var ticketPriceStr by remember { mutableStateOf(viewModel.getSpinTicketPrice().toString()) }
+    
+    var depositRateStr by remember { mutableStateOf(viewModel.getAdminNairaRate().toString()) }
+    var withdrawRateStr by remember { mutableStateOf(viewModel.getAdminWithdrawalNairaRate().toString()) }
+    
+    var roiAutoEnabled by remember { mutableStateOf(viewModel.isAutoRoiEnabled()) }
+    var roiAutoTimeStr by remember { mutableStateOf(viewModel.getAutoRoiTime()) }
+    
+    var maxWithdrawalsStr by remember { mutableStateOf(viewModel.getMaxWithdrawalsPerDay().toString()) }
+    
+    var refLevel1Str by remember { mutableStateOf(viewModel.getRefLevel1Pct().toString()) }
+    var refLevel2Str by remember { mutableStateOf(viewModel.getRefLevel2Pct().toString()) }
+    
+    var adminAccessCodeStr by remember { mutableStateOf(viewModel.getAdminAccessCode()) }
+    
+    var legacyRefRebateStr by remember { mutableStateOf(viewModel.getLegacyRefRebate().toString()) }
+    
+    var siteNameStr by remember { mutableStateOf(viewModel.getSiteName()) }
+    var launchDateTimeStr by remember { mutableStateOf(viewModel.getLaunchDateTime()) }
+    var pColorStr by remember { mutableStateOf(viewModel.getColorPrimary()) }
+    var sColorStr by remember { mutableStateOf(viewModel.getColorSecondary()) }
+    
+    var globalWithdrawalLocked by remember { mutableStateOf(viewModel.isGlobalWithdrawalLocked()) }
+    
+    var bankNameStr by remember { mutableStateOf(viewModel.getAdminBankDetailBank()) }
+    var bankAccountNameStr by remember { mutableStateOf(viewModel.getAdminBankDetailName()) }
+    var bankAccountNumberStr by remember { mutableStateOf(viewModel.getAdminBankDetailNum()) }
+    
+    var cryptoAddrStr by remember { mutableStateOf(viewModel.getAdminCryptoAddress()) }
+    var cryptoNetStr by remember { mutableStateOf(viewModel.getAdminCryptoNetwork()) }
+    
+    var popupMsgStr by remember { mutableStateOf(viewModel.getAdminPopupMessage()) }
+    
+    var depositRulesBankStr by remember { mutableStateOf(viewModel.getDepositRulesBank()) }
+    var depositRulesCryptoStr by remember { mutableStateOf(viewModel.getDepositRulesCrypto()) }
+    var withdrawalRulesBankStr by remember { mutableStateOf(viewModel.getWithdrawalRulesBank()) }
+    var withdrawalRulesCryptoStr by remember { mutableStateOf(viewModel.getWithdrawalRulesCrypto()) }
+    
+    val scrollState = rememberScrollState()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // SLOT CREDIT SYSTEM CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD700).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = GoldAccent)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Slot Credit System", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("MANAGE USER PURCHASE COST FOR SPIN TICKETS", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = ticketPriceStr,
+                    onValueChange = { ticketPriceStr = it },
+                    label = { Text("SPIN TICKET PRICE (USD)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                Button(
+                    onClick = {
+                        val price = ticketPriceStr.toDoubleOrNull() ?: 20.0
+                        viewModel.saveSpinTicketPrice(price)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5A93B)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("SET PRICE", color = DeepObsidian, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // CONVERSION RATE SETTINGS CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD700).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = GoldAccent)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Conversion Rate Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("MANAGE GLOBAL EXCHANGE SPREADS", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E88E5).copy(alpha = 0.1f))
+                        .border(1.dp, Color(0xFF1E88E5).copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        "You can set different rates for deposits and withdrawals to manage exchange spreads and fees effectively.",
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+                
+                OutlinedTextField(
+                    value = depositRateStr,
+                    onValueChange = { depositRateStr = it },
+                    label = { Text("DEPOSIT RATE (USD TO NAIRA)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                OutlinedTextField(
+                    value = withdrawRateStr,
+                    onValueChange = { withdrawRateStr = it },
+                    label = { Text("WITHDRAWAL RATE (USD TO NAIRA)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                // Live preview calculated based on $100 USD
+                val depRate = depositRateStr.toDoubleOrNull() ?: 1492.52
+                val wthRate = withdrawRateStr.toDoubleOrNull() ?: 1420.24
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("📊 LIVE PREVIEW (\$100 USD)", color = EmeraldGreen, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Deposit cost:", color = Color.White, fontSize = 12.sp)
+                            Text("₦${String.format("%,.2f", depRate * 100)}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Withdrawal payout:", color = Color.White, fontSize = 12.sp)
+                            Text("₦${String.format("%,.2f", wthRate * 100)}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                        Divider(color = BorderColor)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("SPREAD VALUE:", color = GoldAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("₦${String.format("%,.2f", (depRate - wthRate) * 100)}", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+                }
+                
+                Button(
+                    onClick = {
+                        viewModel.saveAdminPlatformSettings(
+                            depRate,
+                            wthRate,
+                            bankNameStr,
+                            bankAccountNumberStr,
+                            bankAccountNameStr
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE5A93B)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("UPDATE CONVERSION RATES", color = DeepObsidian, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // AUTOMATED ROI DISTRIBUTION CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD700).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = GoldAccent)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Automated ROI Distribution", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("CONFIGURE SCHEDULED PROFIT PAYOUTS", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Enable Automation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Automatically distribute ROI to all active investments daily", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                    Switch(
+                        checked = roiAutoEnabled,
+                        onCheckedChange = { roiAutoEnabled = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = EmeraldGreen, checkedTrackColor = EmeraldGreen.copy(alpha=0.4f))
+                    )
+                }
+                
+                OutlinedTextField(
+                    value = roiAutoTimeStr,
+                    onValueChange = { roiAutoTimeStr = it },
+                    label = { Text("DISTRIBUTION TIME (24H)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                Button(
+                    onClick = {
+                        viewModel.saveAutoRoiSettings(roiAutoEnabled, roiAutoTimeStr)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4500)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("UPDATE", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("STATUS BEACON", color = Color.LightGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("NEXT SCHEDULED RUN", color = GoldAccent, fontSize = 8.sp)
+                        Text("11/10/2025, 12:00:00 AM", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("MANUAL OVERRIDE", color = Color.Red, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("Instant ROI Distribution", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Trigger a complete payout cycle immediately for all active plans.", color = DarkGreyText, fontSize = 10.sp)
+                        
+                        Button(
+                            onClick = { viewModel.distributeUserRoiManually() },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = DeepObsidian, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("DISTRIBUTE NOW", color = DeepObsidian, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // DAILY WITHDRAWAL LIMIT CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD700).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = GoldAccent)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Daily Withdrawal Limit", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("GLOBAL PAYOUT VELOCITY CONTROL", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("💡 HOW IT WORKS", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Text("• Users can make a maximum number of withdrawal requests per day", color = Color.LightGray, fontSize = 9.sp)
+                        Text("• The limit resets automatically at 12:00 AM (midnight) daily", color = Color.LightGray, fontSize = 9.sp)
+                        Text("• This helps prevent abuse and manages withdrawal processing workload", color = Color.LightGray, fontSize = 9.sp)
+                        Text("• Users see how many withdrawals they have remaining when they request", color = Color.LightGray, fontSize = 9.sp)
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = maxWithdrawalsStr,
+                    onValueChange = { maxWithdrawalsStr = it.filter { c -> c.isDigit() } },
+                    label = { Text("MAXIMUM WITHDRAWALS PER DAY", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f).background(Color(0xFFFFD700).copy(alpha=0.15f)).padding(8.dp), contentAlignment = Alignment.Center) {
+                        Text("$maxWithdrawalsStr withdrawal", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                    Box(modifier = Modifier.weight(1f).background(Color(0xFFFFD700).copy(alpha=0.15f)).padding(8.dp), contentAlignment = Alignment.Center) {
+                        Text("$maxWithdrawalsStr withdrawal", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+                Text("EACH USER CAN REQUEST THIS MANY WITHDRAWALS PER DAY", color = DarkGreyText, fontSize = 8.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { maxWithdrawalsStr = "1" },
+                        colors = ButtonDefaults.buttonColors(containerColor = BorderColor),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("RESET", color = Color.White, fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = {
+                            val limit = maxWithdrawalsStr.toIntOrNull() ?: 1
+                            viewModel.saveMaxWithdrawalsPerDay(limit)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4500)),
+                        modifier = Modifier.weight(1.5f)
+                    ) {
+                        Text("SAVE SETTINGS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // MULTI-LEVEL REFERRAL SYSTEM CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1E88E5).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = ElectricBlue)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Multi-Level Referral System", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("CONFIGURE REWARD PERCENTAGES FOR CONVERSIONS", color = DarkGreyText, fontSize = 9.sp)
+                    }
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("👥 HOW REFERRALS WORK", color = ElectricBlue, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Text("• LEVEL 1 (Direct): Users who sign up using your referral code. You earn a percentage of their approval deposits.", color = Color.LightGray, fontSize = 9.sp)
+                        Text("• LEVEL 2 (Indirect): Users who sign up using your Level 1 referrals' codes. You earn a smaller percentage of their approval deposits.", color = Color.LightGray, fontSize = 9.sp)
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = refLevel1Str,
+                    onValueChange = { refLevel1Str = it },
+                    label = { Text("LEVEL 1 (DIRECT) PERCENTAGE (%)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    suffix = { Text("%") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                OutlinedTextField(
+                    value = refLevel2Str,
+                    onValueChange = { refLevel2Str = it },
+                    label = { Text("LEVEL 2 (INDIRECT) PERCENTAGE (%)", fontSize = 10.sp, color = DarkGreyText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    suffix = { Text("%") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = ElectricBlue,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                
+                // Live preview of rewards
+                val l1 = refLevel1Str.toDoubleOrNull() ?: 15.0
+                val l2 = refLevel2Str.toDoubleOrNull() ?: 3.0
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DeepObsidian),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("💲 LIVE EARNINGS PREVIEW", color = ElectricBlue, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        listOf(100.0, 500.0, 1000.0).forEach { depositValue ->
+                            Text("On \$${depositValue.toInt()} deposit:", color = Color.LightGray, fontWeight = FontWeight.Bold, fontSize = 9.sp)
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Level 1 direct payout:", color = Color.Gray, fontSize = 11.sp)
+                                Text("\$${String.format("%.2f", depositValue * (l1/100))}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Level 2 indirect payout:", color = Color.Gray, fontSize = 11.sp)
+                                Text("\$${String.format("%.2f", depositValue * (l2/100))}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                            if (depositValue != 1000.0) Divider(color = BorderColor.copy(alpha=0.5f))
+                        }
+                    }
+                }
+                
+                Button(
+                    onClick = {
+                        viewModel.saveReferralRates(l1, l2)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("SAVE GLOBAL REFERRAL CONFIG", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // ADMIN PASSCODE & LEGACY REBATE CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Admin Access Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = adminAccessCodeStr,
+                        onValueChange = { adminAccessCodeStr = it },
+                        label = { Text("AUTHORIZATION PASSCODE", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = LossRed,
+                            unfocusedBorderColor = BorderColor
+                        )
+                    )
+                    Button(
+                        onClick = { viewModel.saveAdminAccessCode(adminAccessCodeStr) },
+                        colors = ButtonDefaults.buttonColors(containerColor = LossRed),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("CHANGE CODE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                Divider(color = BorderColor)
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                Text("Referral Rebate Settings (Legacy)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                OutlinedTextField(
+                    value = legacyRefRebateStr,
+                    onValueChange = { legacyRefRebateStr = it },
+                    label = { Text("REFERRAL REBATE (%)", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    suffix = { Text("%") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = GoldAccent,
+                        unfocusedBorderColor = BorderColor
+                    )
+                )
+                Text("Legacy setting. Please use the Multi-Level Manager for better control.", color = DarkGreyText, fontSize = 9.sp)
+            }
+        }
+
+        // SITE CUSTOMIZATION CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Site Customization", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                
+                OutlinedTextField(
+                    value = siteNameStr,
+                    onValueChange = { siteNameStr = it },
+                    label = { Text("SITE NAME", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                OutlinedTextField(
+                    value = launchDateTimeStr,
+                    onValueChange = { launchDateTimeStr = it },
+                    label = { Text("LAUNCH DATE & TIME (COUNTDOWN)", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = pColorStr,
+                        onValueChange = { pColorStr = it },
+                        label = { Text("PRIMARY COLOR", fontSize = 9.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    )
+                    OutlinedTextField(
+                        value = sColorStr,
+                        onValueChange = { sColorStr = it },
+                        label = { Text("SECONDARY COLOR", fontSize = 9.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                Divider(color = BorderColor)
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = LossRed, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Global Withdrawal Lock", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Switch(
+                        checked = globalWithdrawalLocked,
+                        onCheckedChange = { globalWithdrawalLocked = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = LossRed, checkedTrackColor = LossRed.copy(alpha=0.4f))
+                    )
+                }
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = globalWithdrawalLocked,
+                        onCheckedChange = { globalWithdrawalLocked = it },
+                        colors = CheckboxDefaults.colors(checkedColor = LossRed)
+                    )
+                    Text("Lock withdrawals globally for all users", color = Color.LightGray, fontSize = 11.sp)
+                }
+            }
+        }
+
+        // BANK AND CRYPTO DETAILS CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Bank Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                
+                OutlinedTextField(
+                    value = bankNameStr,
+                    onValueChange = { bankNameStr = it },
+                    label = { Text("KUDA MFB / WIRE OUTLET", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                OutlinedTextField(
+                    value = bankAccountNameStr,
+                    onValueChange = { bankAccountNameStr = it },
+                    label = { Text("ACCOUNT FULL NAME", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                OutlinedTextField(
+                    value = bankAccountNumberStr,
+                    onValueChange = { bankAccountNumberStr = it },
+                    label = { Text("ACCOUNT NUMBER", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                Divider(color = BorderColor)
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text("Crypto Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                OutlinedTextField(
+                    value = cryptoAddrStr,
+                    onValueChange = { cryptoAddrStr = it },
+                    label = { Text("WALLET ADDRESS", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                OutlinedTextField(
+                    value = cryptoNetStr,
+                    onValueChange = { cryptoNetStr = it },
+                    label = { Text("NETWORK (e.g., BEP20)", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+            }
+        }
+
+        // RULES TEXT CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Website Popup Message", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = popupMsgStr,
+                    onValueChange = { popupMsgStr = it },
+                    placeholder = { Text("Announcement shown to clients...", color = Color.Gray, fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Text("Deposit Rules (Local Bank)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = depositRulesBankStr,
+                    onValueChange = { depositRulesBankStr = it },
+                    placeholder = { Text("Enter local bank deposit guidelines...", color = Color.Gray, fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Text("Deposit Rules (Cryptocurrency)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = depositRulesCryptoStr,
+                    onValueChange = { depositRulesCryptoStr = it },
+                    placeholder = { Text("Enter cryptocurrency deposit boundaries...", color = Color.Gray, fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Text("Withdrawal Rules (Local Bank)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = withdrawalRulesBankStr,
+                    onValueChange = { withdrawalRulesBankStr = it },
+                    placeholder = { Text("Enter local bank withdrawal boundaries...", color = Color.Gray, fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+                
+                Text("Withdrawal Rules (Cryptocurrency)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = withdrawalRulesCryptoStr,
+                    onValueChange = { withdrawalRulesCryptoStr = it },
+                    placeholder = { Text("Enter cryptocurrency withdrawal boundaries...", color = Color.Gray, fontSize = 11.sp) },
+                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+            }
+        }
+
+        // GREEN SAVE ALL GLOBAL SETTINGS BUTTON
+        Button(
+            onClick = {
+                val ticketPrice = ticketPriceStr.toDoubleOrNull() ?: 20.0
+                val depRate = depositRateStr.toDoubleOrNull() ?: 1492.52
+                val wthRate = withdrawRateStr.toDoubleOrNull() ?: 1420.24
+                val maxWth = maxWithdrawalsStr.toIntOrNull() ?: 1
+                val rL1 = refLevel1Str.toDoubleOrNull() ?: 15.0
+                val rL2 = refLevel2Str.toDoubleOrNull() ?: 3.0
+                val legacyRebate = legacyRefRebateStr.toDoubleOrNull() ?: 2.0
+                
+                viewModel.saveAllGlobalSettings(
+                    ticketPrice,
+                    depRate,
+                    wthRate,
+                    maxWth,
+                    rL1,
+                    rL2,
+                    legacyRebate,
+                    siteNameStr,
+                    launchDateTimeStr,
+                    pColorStr,
+                    sColorStr,
+                    globalWithdrawalLocked,
+                    bankNameStr,
+                    bankAccountNameStr,
+                    bankAccountNumberStr,
+                    cryptoAddrStr,
+                    cryptoNetStr,
+                    popupMsgStr,
+                    depositRulesBankStr,
+                    depositRulesCryptoStr,
+                    withdrawalRulesBankStr,
+                    withdrawalRulesCryptoStr
+                )
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+        ) {
+            Icon(imageVector = Icons.Default.Done, contentDescription = null, tint = DeepObsidian)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("SAVE ALL GLOBAL SETTINGS", color = DeepObsidian, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+fun AdminDailyDropTab(
+    viewModel: InvestmentViewModel
+) {
+    var isEnabled by remember { mutableStateOf(viewModel.isDailyDropEnabled()) }
+    val bonusList = viewModel.getDailyDropBonusList()
+    
+    var day1Str by remember { mutableStateOf(bonusList.getOrElse(0) { 1.00 }.toString()) }
+    var day2Str by remember { mutableStateOf(bonusList.getOrElse(1) { 2.00 }.toString()) }
+    var day3Str by remember { mutableStateOf(bonusList.getOrElse(2) { 3.00 }.toString()) }
+    var day4Str by remember { mutableStateOf(bonusList.getOrElse(3) { 4.50 }.toString()) }
+    var day5Str by remember { mutableStateOf(bonusList.getOrElse(4) { 6.00 }.toString()) }
+    var day6Str by remember { mutableStateOf(bonusList.getOrElse(5) { 8.00 }.toString()) }
+    var day7Str by remember { mutableStateOf(bonusList.getOrElse(6) { 12.00 }.toString()) }
+    
+    val scrollState = rememberScrollState()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.5.dp, GoldAccent.copy(alpha=0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Daily Drop System Toggle", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("MAINTENANCE FLAG GATE", color = DarkGreyText, fontSize = 9.sp)
+                        }
+                    }
+                    Switch(
+                        checked = isEnabled,
+                        onCheckedChange = { 
+                            isEnabled = it
+                            viewModel.setDailyDropEnabled(it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = GoldAccent, checkedTrackColor = GoldAccent.copy(alpha=0.4f))
+                    )
+                }
+                Text(
+                    text = "Configure if system users can claim daily consecutive sign-in drop tokens. When disabled (off), users will see a system maintenance alert on their dashboard.",
+                    color = DarkGreyText,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = DarkSlateCard),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "CONSECUTIVE REWARD VALUES (DAY 1 TO 7)",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    "Assign how much cash balance users can obtain daily. The day streak increments consecutively on 24-48 hour intervals.",
+                    color = DarkGreyText,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+                
+                listOf(
+                    Pair("DAY 1 DROP VALUE (\$)", day1Str to { s: String -> day1Str = s }),
+                    Pair("DAY 2 DROP VALUE (\$)", day2Str to { s: String -> day2Str = s }),
+                    Pair("DAY 3 DROP VALUE (\$)", day3Str to { s: String -> day3Str = s }),
+                    Pair("DAY 4 DROP VALUE (\$)", day4Str to { s: String -> day4Str = s }),
+                    Pair("DAY 5 DROP VALUE (\$)", day5Str to { s: String -> day5Str = s }),
+                    Pair("DAY 6 DROP VALUE (\$)", day6Str to { s: String -> day6Str = s }),
+                    Pair("DAY 7 DROP VALUE (\$)", day7Str to { s: String -> day7Str = s })
+                ).forEachIndexed { index, pair ->
+                    OutlinedTextField(
+                        value = pair.second.first,
+                        onValueChange = pair.second.second,
+                        label = { Text("Day ${index + 1} Reward Value (USD)", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        prefix = { Text("\$ ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = GoldAccent,
+                            unfocusedBorderColor = BorderColor
+                        )
+                    )
+                }
+                
+                Button(
+                    onClick = {
+                        val d1 = day1Str.toFloatOrNull() ?: 1.00f
+                        val d2 = day2Str.toFloatOrNull() ?: 2.00f
+                        val d3 = day3Str.toFloatOrNull() ?: 3.00f
+                        val d4 = day4Str.toFloatOrNull() ?: 4.50f
+                        val d5 = day5Str.toFloatOrNull() ?: 6.00f
+                        val d6 = day6Str.toFloatOrNull() ?: 8.00f
+                        val d7 = day7Str.toFloatOrNull() ?: 12.00f
+                        
+                        viewModel.saveDailyDropBonuses(listOf(d1, d2, d3, d4, d5, d6, d7))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GoldAccent),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("SAVE ALL DROP BONUS VALUES", color = DeepObsidian, fontWeight = FontWeight.Bold)
                 }
             }
         }

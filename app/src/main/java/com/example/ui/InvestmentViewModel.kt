@@ -51,27 +51,25 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
     fun getSupabaseUrl(): String {
         val saved = sharedPrefs.getString("supabase_url", "") ?: ""
         val disconnected = sharedPrefs.getBoolean("supabase_disconnected", false)
-        if (saved.isBlank() && !disconnected) {
-            val buildConfigUrl = try { com.example.BuildConfig.SUPABASE_URL } catch (e: Exception) { "" }
-            if (buildConfigUrl.isNotBlank() && !buildConfigUrl.startsWith("MY_")) {
-                return buildConfigUrl
-            }
-            return "https://fpnsgxtrsiegntteqkhw.supabase.co"
+        if (saved.isNotBlank()) return saved
+        if (disconnected) return ""
+        val buildConfigUrl = try { com.example.BuildConfig.SUPABASE_URL } catch (e: Exception) { "" }
+        if (buildConfigUrl.isNotBlank() && !buildConfigUrl.startsWith("MY_")) {
+            return buildConfigUrl
         }
-        return saved
+        return "" // Removed hardcoded default credentials to prevent leak
     }
 
     fun getSupabaseKey(): String {
         val saved = sharedPrefs.getString("supabase_key", "") ?: ""
         val disconnected = sharedPrefs.getBoolean("supabase_disconnected", false)
-        if (saved.isBlank() && !disconnected) {
-            val buildConfigKey = try { com.example.BuildConfig.SUPABASE_KEY } catch (e: Exception) { "" }
-            if (buildConfigKey.isNotBlank() && !buildConfigKey.startsWith("MY_")) {
-                return buildConfigKey
-            }
-            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwbnNneHRyc2llZ250dGVxa2h3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzOTU4OTksImV4cCI6MjA5Njk3MTg5OX0.UioaRLJND7uQxlU-_3fm0c9WOtSIvMDa4UvhHpSVDWo"
+        if (saved.isNotBlank()) return saved
+        if (disconnected) return ""
+        val buildConfigKey = try { com.example.BuildConfig.SUPABASE_KEY } catch (e: Exception) { "" }
+        if (buildConfigKey.isNotBlank() && !buildConfigKey.startsWith("MY_")) {
+            return buildConfigKey
         }
-        return saved
+        return "" // Removed hardcoded default credentials to prevent leak
     }
 
     fun saveSupabaseCredentials(url: String, key: String) {
@@ -116,8 +114,7 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun backupActiveUserToSupabase() {
-        val username = _currentUsername.value ?: return
+    fun backupUserToSupabase(username: String) {
         val url = getSupabaseUrl()
         val key = getSupabaseKey()
         if (url.isBlank() || key.isBlank()) return
@@ -131,13 +128,18 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
                     supabaseClient.saveBackup(url, key, email, backup)
                 }
                 if (res.isSuccess) {
-                    android.util.Log.d("ZeloxSupabase", "Cloud backup saved successfully.")
+                    android.util.Log.d("ZeloxSupabase", "Cloud backup saved successfully for user: $username.")
                 } else {
                     val err = res.exceptionOrNull()?.message ?: "Unknown error"
-                    android.util.Log.e("ZeloxSupabase", "Cloud backup failed: $err")
+                    android.util.Log.e("ZeloxSupabase", "Cloud backup failed for user $username: $err")
                 }
             }
         }
+    }
+
+    fun backupActiveUserToSupabase() {
+        val username = _currentUsername.value ?: return
+        backupUserToSupabase(username)
     }
 
     fun testSupabaseAndSync(url: String, key: String) {
@@ -534,7 +536,8 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
     fun spinLuckyWheel() {
         val username = _currentUsername.value ?: return
         viewModelScope.launch {
-            val result = repository.playLuckySpin(username)
+            val costPrice = getSpinTicketPrice()
+            val result = repository.playLuckySpin(username, costPrice)
             if (result.isSuccess) {
                 val prize = result.getOrNull() ?: 0.0
                 _actionResult.emit(Result.success("Lucky Wheel: You won $$prize cash!"))
@@ -595,6 +598,9 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
     val allRegisteredUsers: StateFlow<List<User>> = repository.observeAllUsers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allGlobalHoldings: StateFlow<List<UserInvestment>> = repository.observeAllHoldings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allGlobalTransactions: StateFlow<List<InvestmentTransaction>> = repository.observeAllTransactions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -603,9 +609,15 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
 
     fun approveTransaction(id: Int) {
         viewModelScope.launch {
-            val result = repository.approveTransaction(id)
+            val l1Pct = getRefLevel1Pct()
+            val l2Pct = getRefLevel2Pct()
+            val result = repository.approveTransaction(id, l1Pct, l2Pct)
             if (result.isSuccess) {
+                val clientUsername = result.getOrNull()
                 _actionResult.emit(Result.success("Success: Approved and finalized transaction!"))
+                if (!clientUsername.isNullOrBlank()) {
+                    backupUserToSupabase(clientUsername)
+                }
             } else {
                 _actionResult.emit(Result.failure(result.exceptionOrNull() ?: Exception("Failed to approve transaction.")))
             }
@@ -616,7 +628,11 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val result = repository.rejectTransaction(id)
             if (result.isSuccess) {
+                val clientUsername = result.getOrNull()
                 _actionResult.emit(Result.success("Success: Rejected transaction and processed any payouts refund."))
+                if (!clientUsername.isNullOrBlank()) {
+                    backupUserToSupabase(clientUsername)
+                }
             } else {
                 _actionResult.emit(Result.failure(result.exceptionOrNull() ?: Exception("Failed to reject transaction.")))
             }
@@ -678,9 +694,15 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val res = repository.distributeRoiToAllActivePlans(isAuto = false)
             if (res.isSuccess) {
-                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + res.getOrThrow()
+                val pair = res.getOrThrow()
+                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + pair.first
                 saveDistributionHistory(logMsg)
-                _actionResult.emit(Result.success(res.getOrThrow()))
+                _actionResult.emit(Result.success(pair.first))
+                
+                // Backup all affected users to Supabase
+                pair.second.forEach { username ->
+                    backupUserToSupabase(username)
+                }
             } else {
                 _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Manual distribution failed.")))
             }
@@ -701,9 +723,15 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
                             sharedPrefs.edit().putString("last_ran_auto_day", todayDate).apply()
                             val res = repository.distributeRoiToAllActivePlans(isAuto = true)
                             if (res.isSuccess) {
-                                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + res.getOrThrow()
+                                val pair = res.getOrThrow()
+                                val logMsg = "[${SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())}] " + pair.first
                                 saveDistributionHistory(logMsg)
-                                _actionResult.emit(Result.success(res.getOrThrow()))
+                                _actionResult.emit(Result.success(pair.first))
+                                
+                                // Backup all affected users to Supabase
+                                pair.second.forEach { username ->
+                                    backupUserToSupabase(username)
+                                }
                             }
                         }
                     }
@@ -735,6 +763,229 @@ class InvestmentViewModel(application: Application) : AndroidViewModel(applicati
             } else {
                 _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Failed to update age.")))
             }
+        }
+    }
+
+    fun claimArrivalBonus() {
+        val username = _currentUsername.value ?: return
+        viewModelScope.launch {
+            if (!isDailyDropEnabled()) {
+                _actionResult.emit(Result.failure(Exception("Daily claim is currently disabled for system maintenance.")))
+                return@launch
+            }
+            val bonusAmounts = getDailyDropBonusList()
+            val res = repository.claimArrivalBonus(username, bonusAmounts)
+            if (res.isSuccess) {
+                val pair = res.getOrThrow()
+                _actionResult.emit(Result.success("Success: Claimed $${String.format("%.2f", pair.first)} Daily Arrival Bonus for Day ${pair.second}!"))
+                backupActiveUserToSupabase()
+            } else {
+                _actionResult.emit(Result.failure(res.exceptionOrNull() ?: Exception("Failed to claim daily bonus.")))
+            }
+        }
+    }
+
+    // --- Detailed Replicated Settings Getters & Setters ---
+    fun isDailyDropEnabled(): Boolean = sharedPrefs.getBoolean("daily_drop_enabled", true)
+    
+    fun setDailyDropEnabled(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("daily_drop_enabled", enabled).apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success(if (enabled) "Daily Bonus Enabled successfully" else "Daily Bonus Disabled successfully"))
+        }
+    }
+
+    fun getDailyDropBonusList(): List<Double> {
+        return listOf(
+            sharedPrefs.getFloat("daily_drop_day_1", 1.00f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_2", 2.00f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_3", 3.00f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_4", 4.50f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_5", 6.00f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_6", 8.00f).toDouble(),
+            sharedPrefs.getFloat("daily_drop_day_7", 12.00f).toDouble()
+        )
+    }
+
+    fun saveDailyDropBonuses(list: List<Float>) {
+        val editor = sharedPrefs.edit()
+        list.forEachIndexed { index, value ->
+            editor.putFloat("daily_drop_day_${index + 1}", value)
+        }
+        editor.apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Daily Drop Day 1 to 7 bonus amounts saved successfully!"))
+        }
+    }
+
+    fun getSpinTicketPrice(): Double {
+        return sharedPrefs.getFloat("spin_ticket_price", 20.0f).toDouble()
+    }
+
+    fun saveSpinTicketPrice(p: Double) {
+        sharedPrefs.edit().putFloat("spin_ticket_price", p.toFloat()).apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Spin ticket price set to $$p successfully!"))
+        }
+    }
+
+    fun getMaxWithdrawalsPerDay(): Int {
+        return sharedPrefs.getInt("max_withdrawals_per_day", 1)
+    }
+
+    fun saveMaxWithdrawalsPerDay(v: Int) {
+        sharedPrefs.edit().putInt("max_withdrawals_per_day", v).apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Daily withdrawal limit saved successfully!"))
+        }
+    }
+
+    fun getRefLevel1Pct(): Double = sharedPrefs.getFloat("ref_level_1_pct", 15.0f).toDouble()
+    fun getRefLevel2Pct(): Double = sharedPrefs.getFloat("ref_level_2_pct", 3.0f).toDouble()
+
+    fun saveReferralRates(l1: Double, l2: Double) {
+        sharedPrefs.edit()
+            .putFloat("ref_level_1_pct", l1.toFloat())
+            .putFloat("ref_level_2_pct", l2.toFloat())
+            .apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Multi-level referral commission percentages saved successfully!"))
+        }
+    }
+
+    fun getAdminAccessCode(): String = sharedPrefs.getString("admin_access_code", "791379") ?: "791379"
+
+    fun saveAdminAccessCode(code: String) {
+        sharedPrefs.edit().putString("admin_access_code", code.trim()).apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Admin secure passcode altered successfully!"))
+        }
+    }
+
+    fun getLegacyRefRebate(): Double = sharedPrefs.getFloat("legacy_ref_rebate", 2.0f).toDouble()
+
+    fun saveLegacyRefRebate(pct: Double) {
+        sharedPrefs.edit().putFloat("legacy_ref_rebate", pct.toFloat()).apply()
+    }
+
+    fun getSiteName(): String = sharedPrefs.getString("site_name", "Zelox") ?: "Zelox"
+    fun getLaunchDateTime(): String = sharedPrefs.getString("launch_date_time", "2026-12-25 12:00:00") ?: "2026-12-25 12:00:00"
+    fun getColorPrimary(): String = sharedPrefs.getString("color_primary", "#E5A93B") ?: "#E5A93B"
+    fun getColorSecondary(): String = sharedPrefs.getString("color_secondary", "#D1D5DB") ?: "#D1D5DB"
+
+    fun saveSiteCustomization(siteName: String, launchDateTime: String, pColor: String, sColor: String) {
+        sharedPrefs.edit()
+            .putString("site_name", siteName)
+            .putString("launch_date_time", launchDateTime)
+            .putString("color_primary", pColor)
+            .putString("color_secondary", sColor)
+            .apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("Site customizations saved successfully!"))
+        }
+    }
+
+    fun isGlobalWithdrawalLocked(): Boolean = sharedPrefs.getBoolean("global_withdrawal_lock", false)
+
+    fun setGlobalWithdrawalLock(locked: Boolean) {
+        sharedPrefs.edit().putBoolean("global_withdrawal_lock", locked).apply()
+        viewModelScope.launch {
+            _actionResult.emit(Result.success(if (locked) "Withdrawals locked globally" else "Withdrawals unlocked globally"))
+        }
+    }
+
+    fun getAdminBankDetailBank(): String = sharedPrefs.getString("admin_bank_detail_bank", "Kuda MFB") ?: "Kuda MFB"
+    fun getAdminBankDetailName(): String = sharedPrefs.getString("admin_bank_detail_name", "Chiemerie Vict") ?: "Chiemerie Vict"
+    fun getAdminBankDetailNum(): String = sharedPrefs.getString("admin_bank_detail_num", "3003013095") ?: "3003013095"
+
+    fun saveAdminBankDetails(bank: String, name: String, num: String) {
+        sharedPrefs.edit()
+            .putString("admin_bank_detail_bank", bank)
+            .putString("admin_bank_detail_name", name)
+            .putString("admin_bank_detail_num", num)
+            .apply()
+    }
+
+    fun getAdminCryptoAddress(): String = sharedPrefs.getString("admin_crypto_address", "") ?: ""
+    fun getAdminCryptoNetwork(): String = sharedPrefs.getString("admin_crypto_network", "BEP20") ?: "BEP20"
+
+    fun saveAdminCryptoDetails(addr: String, net: String) {
+        sharedPrefs.edit()
+            .putString("admin_crypto_address", addr)
+            .putString("admin_crypto_network", net)
+            .apply()
+    }
+
+    fun getAdminPopupMessage(): String = sharedPrefs.getString("admin_popup_message", "") ?: ""
+    fun saveAdminPopupMessage(msg: String) {
+        sharedPrefs.edit().putString("admin_popup_message", msg).apply()
+    }
+
+    fun getDepositRulesBank(): String = sharedPrefs.getString("deposit_rules_bank", "") ?: ""
+    fun getDepositRulesCrypto(): String = sharedPrefs.getString("deposit_rules_crypto", "") ?: ""
+    fun getWithdrawalRulesBank(): String = sharedPrefs.getString("withdrawal_rules_bank", "") ?: ""
+    fun getWithdrawalRulesCrypto(): String = sharedPrefs.getString("withdrawal_rules_crypto", "") ?: ""
+
+    fun saveRuleTexts(depBank: String, depCrypto: String, wthBank: String, wthCrypto: String) {
+        sharedPrefs.edit()
+            .putString("deposit_rules_bank", depBank)
+            .putString("deposit_rules_crypto", depCrypto)
+            .putString("withdrawal_rules_bank", wthBank)
+            .putString("withdrawal_rules_crypto", wthCrypto)
+            .apply()
+    }
+
+    fun saveAllGlobalSettings(
+        ticketPrice: Double,
+        depositRate: Double,
+        withdrawRate: Double,
+        maxWithdrawals: Int,
+        l1Pct: Double,
+        l2Pct: Double,
+        legacyRefRebate: Double,
+        siteName: String,
+        launchDateTime: String,
+        pColor: String,
+        sColor: String,
+        withdrawalLocked: Boolean,
+        bank: String,
+        bankActName: String,
+        bankActNum: String,
+        cryptoAddr: String,
+        cryptoNet: String,
+        popupMsg: String,
+        depositRulesBank: String,
+        depositRulesCrypto: String,
+        withdrawalRulesBank: String,
+        withdrawalRulesCrypto: String
+    ) {
+        sharedPrefs.edit()
+            .putFloat("spin_ticket_price", ticketPrice.toFloat())
+            .putFloat("admin_naira_rate", depositRate.toFloat())
+            .putFloat("admin_withdrawal_naira_rate", withdrawRate.toFloat())
+            .putInt("max_withdrawals_per_day", maxWithdrawals)
+            .putFloat("ref_level_1_pct", l1Pct.toFloat())
+            .putFloat("ref_level_2_pct", l2Pct.toFloat())
+            .putFloat("legacy_ref_rebate", legacyRefRebate.toFloat())
+            .putString("site_name", siteName)
+            .putString("launch_date_time", launchDateTime)
+            .putString("color_primary", pColor)
+            .putString("color_secondary", sColor)
+            .putBoolean("global_withdrawal_lock", withdrawalLocked)
+            .putString("admin_bank_detail_bank", bank)
+            .putString("admin_bank_detail_name", bankActName)
+            .putString("admin_bank_detail_num", bankActNum)
+            .putString("admin_crypto_address", cryptoAddr)
+            .putString("admin_crypto_network", cryptoNet)
+            .putString("admin_popup_message", popupMsg)
+            .putString("deposit_rules_bank", depositRulesBank)
+            .putString("deposit_rules_crypto", depositRulesCrypto)
+            .putString("withdrawal_rules_bank", withdrawalRulesBank)
+            .putString("withdrawal_rules_crypto", withdrawalRulesCrypto)
+            .apply()
+        
+        viewModelScope.launch {
+            _actionResult.emit(Result.success("All settings saved successfully!"))
         }
     }
 }
